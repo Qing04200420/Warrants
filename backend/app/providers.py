@@ -9,6 +9,7 @@ BASE_URL = "https://newjust.masterlink.com.tw/Z/ZC/ZCA/zcastkwar8840_AQ{code}.dj
 
 
 def _number(pattern: str, text: str, *, default: float | None = None) -> float:
+    """用正規表示式擷取數字；必要欄位不存在時回報明確錯誤。"""
     match = re.search(pattern, text, re.I)
     if not match:
         if default is not None:
@@ -18,6 +19,7 @@ def _number(pattern: str, text: str, *, default: float | None = None) -> float:
 
 
 def parse_warrant_page(html: str, code: str) -> tuple[str, StockQuote, WarrantMetrics]:
+    """解析權證基本條件，並找出後續查行情所需的標的代號。"""
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(" ", strip=True)
     if "403 - Forbidden" in text or "Access is denied" in text:
@@ -49,9 +51,7 @@ def parse_warrant_page(html: str, code: str) -> tuple[str, StockQuote, WarrantMe
                     if match:
                         exercise_ratio = float(match.group())
                 joined = " ".join(values)
-                # Avoid matching digit sequences that are part of decimal numbers
-                # (e.g. the "0.0900" exercise ratio) by asserting the match
-                # is not immediately preceded by a digit or a dot.
+                # 負向前瞻避免把執行比例 0.0900 中的 0900 誤認成股票代號。
                 target = re.search(r"(?<![\d.])(\d{4,6})\b\s*([^\s\d]+)?", joined)
                 if target and target.group(1) != code:
                     stock_code = target.group(1)
@@ -60,11 +60,13 @@ def parse_warrant_page(html: str, code: str) -> tuple[str, StockQuote, WarrantMe
         if exercise_ratio is not None:
             break
 
+    # 表格若沒有代號，再從頁面行情連結的 query string 尋找。
     for link in soup.find_all("a", href=True):
         candidate = re.search(r"(?:a=|_)(\d{4,6})(?:\D|$)", link["href"], re.I)
         if not stock_code and candidate and candidate.group(1) != code:
             stock_code = candidate.group(1)
             break
+    # 少數舊頁面完全省略標的代號，保留已確認資料作最後備援。
     known = {"067185": ("6770", "力積電")}
     fallback_code, fallback_name = known.get(code, ("", re.sub(r"(?:中信|元大|國泰|群益|凱基|永豐|富邦|統一|兆豐|元富|第一金|玉山).*$", "", warrant_name)))
     fallback_name = stock_name_from_table or fallback_name
@@ -112,6 +114,7 @@ def parse_warrant_page(html: str, code: str) -> tuple[str, StockQuote, WarrantMe
 
 
 async def fetch_warrant(code: str) -> tuple[str, StockQuote, WarrantMetrics]:
+    """下載 Big5 權證頁面並轉交純解析函式處理。"""
     # 此固定公開來源的舊憑證鏈缺少 Python 3.14 要求的 SKI；僅此 client 關閉驗證。
     async with httpx.AsyncClient(timeout=12, verify=False, headers={"User-Agent": "Mozilla/5.0 WarrantScore/1.0"}) as client:
         response = await client.get(BASE_URL.format(code=code))
@@ -121,7 +124,9 @@ async def fetch_warrant(code: str) -> tuple[str, StockQuote, WarrantMetrics]:
 
 
 def fetch_stock_quote(stock: StockQuote) -> tuple[StockQuote, str | None]:
+    """優先取得台股行情，失敗時改用最近交易日的 Yahoo 日線。"""
     try:
+        # twstock 可取得台股盤中欄位，成功時不需要備援資料源。
         import twstock
         data = twstock.realtime.get(stock.code)
         if data.get("success"):
@@ -134,6 +139,7 @@ def fetch_stock_quote(stock: StockQuote) -> tuple[StockQuote, str | None]:
         pass
 
     try:
+        # 上市股票使用 .TW，上櫃股票使用 .TWO，依序嘗試直到有資料。
         import yfinance as yf
         warning = None
         frame = None

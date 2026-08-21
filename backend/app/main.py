@@ -14,11 +14,13 @@ from .twse_warrants import fetch_twse_warrant_market_data
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # FastAPI 啟動時先建立分析紀錄與歷史 IV 資料表。
     init_db()
     yield
 
 
 app = FastAPI(title="台股權證評分 API", version="1.0.0", lifespan=lifespan)
+# 除了本機開發網址，也允許正式 GitHub Pages 前端呼叫 API。
 default_origins = [
     "http://localhost:5173",
     "http://localhost:3000",
@@ -46,10 +48,13 @@ def health():
 
 @app.post("/api/warrants/analyze", response_model=Analysis)
 async def analyze(request: AnalyzeRequest):
+    """整合基本資料、標的行情及 TWSE 盤後資料後，計分並保存結果。"""
     try:
+        # 先取得權證基本條件，再用標的代號查詢股票行情。
         name, stock_stub, metrics = await fetch_warrant(request.code)
         stock, warning = fetch_stock_quote(stock_stub)
         try:
+            # TWSE 是補充資料來源；連線失敗不應讓整個分析 API 失敗。
             market = await fetch_twse_warrant_market_data(stock_stub.code, request.code, name)
             if market is None:
                 twse_warning = "TWSE 盤後資料找不到此權證，可能已下市或當日沒有造市報價。"
@@ -58,6 +63,7 @@ async def analyze(request: AnalyzeRequest):
                 iv_count = 0
                 iv_std_source = None
                 if market.implied_vol is not None:
+                    # 同一權證每天只保留一筆 IV，用最近 14 筆計算穩定度。
                     iv_std, iv_count = record_iv_sample(
                         request.code,
                         market.observed_on,
@@ -66,12 +72,12 @@ async def analyze(request: AnalyzeRequest):
                 if iv_std is not None:
                     iv_std_source = "twse_rolling_14d"
                 elif market.period_max_iv_change is not None:
-                    # TWSE publishes the 14-day maximum Buy-1 IV change, not
-                    # a standard deviation. Use it only as an explicitly
-                    # labelled stability proxy until two daily samples exist.
+                    # TWSE 公開的是 14 日委買 IV 最大變動，不是標準差；
+                    # 歷史筆數不足時僅作為有明確標示的暫代穩定度指標。
                     iv_std = market.period_max_iv_change
                     iv_std_source = "twse_14d_max_change_proxy"
                 metrics = metrics.model_copy(
+                    # Pydantic model_copy 可保留基本資料，只覆寫盤後欄位。
                     update={
                         "implied_vol": market.implied_vol,
                         "iv_std": iv_std,
@@ -88,6 +94,7 @@ async def analyze(request: AnalyzeRequest):
         except Exception:
             twse_warning = "TWSE 盤後權證資料暫時無法連線，評分保留可取得的資料。"
         warning = " ".join(item for item in (warning, twse_warning) if item) or None
+        # 所有可取得欄位合併完成後才計分，避免使用尚未補值的資料。
         score, rating, items = calculate_score(metrics)
         result = Analysis(warrant_code=request.code, warrant_name=name, stock=stock, metrics=metrics, score=score, rating=rating, score_items=items, analyzed_at=datetime.now(timezone.utc), warning=warning)
         payload = result.model_dump(mode="json")
@@ -102,6 +109,7 @@ async def analyze(request: AnalyzeRequest):
 
 
 def http_error_types():
+    # 延遲載入 httpx，讓此函式只負責集中定義上游網路錯誤類型。
     import httpx
     return (httpx.HTTPError,)
 

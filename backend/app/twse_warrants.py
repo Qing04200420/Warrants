@@ -1,3 +1,5 @@
+"""TWSE 權證資訊揭露平台的盤後資料查詢與解析。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,9 +13,13 @@ import httpx
 
 
 BASE_URL = "https://warrants.twse.com.tw"
+# 平台的 Period=14 代表查詢 14 日委買 IV 統計欄位。
 QUERY_PERIOD = "14"
+# 避免同一權證在短時間內重複觸發多次 WebForms 查詢。
 CACHE_TTL_SECONDS = 4 * 60 * 60
+# TWSE 依價內外程度拆成三個 GridView，三者都可能包含目標權證。
 GRID_IDS = ("GridCenter", "GridUp", "GridDown")
+# 權證簡稱採券商縮寫，但 TWSE 下拉選單可能使用公司完整名稱。
 ISSUER_ALIASES = {
     "中信": ("中信", "中國信託"),
     "元大": ("元大",),
@@ -34,6 +40,7 @@ ISSUER_ALIASES = {
 
 @dataclass(frozen=True)
 class TwseWarrantMarketData:
+    """單一權證的一筆 TWSE 盤後造市資料。"""
     implied_vol: float | None
     period_max_iv_change: float | None
     bid_ask_spread: float | None
@@ -42,16 +49,17 @@ class TwseWarrantMarketData:
     observed_on: str
 
 
+# key 為（標的代號、權證代號），value 為（快取時間、查詢結果）。
 _row_cache: dict[tuple[str, str], tuple[float, TwseWarrantMarketData | None]] = {}
 
 
 def _soup(response: httpx.Response) -> BeautifulSoup:
-    # The WebForms page contains legacy Big5 bytes even when an intermediary
-    # supplies an incomplete/incorrect charset header.
+    # 平台仍使用 Big5；不能完全信任中介伺服器回傳的 charset 標頭。
     return BeautifulSoup(response.content, "html.parser", from_encoding="big5")
 
 
 def _hidden_fields(soup: BeautifulSoup) -> dict[str, str]:
+    """擷取 ASP.NET WebForms postback 所需的 ViewState 等隱藏欄位。"""
     return {
         node["name"]: node.get("value", "")
         for node in soup.select('input[type="hidden"][name]')
@@ -59,6 +67,7 @@ def _hidden_fields(soup: BeautifulSoup) -> dict[str, str]:
 
 
 def _percent(value: str) -> float | None:
+    """把網頁百分比字串轉成小數；破折號代表官方沒有資料。"""
     cleaned = value.replace("%", "").replace(",", "").strip()
     if not cleaned or cleaned in {"-", "--"}:
         return None
@@ -69,6 +78,7 @@ def _percent(value: str) -> float | None:
 
 
 def _integer(value: str) -> int | None:
+    """解析掛單量，並區分真正的 0 與缺值「-」。"""
     cleaned = value.replace(",", "").strip()
     if not cleaned or cleaned in {"-", "--"}:
         return None
@@ -83,7 +93,7 @@ def _row_values(row) -> list[str]:
 
 
 def parse_market_rows(html: str, observed_on: str | None = None) -> dict[str, TwseWarrantMarketData]:
-    """Parse the three result grids returned by TWSE's warrant query page."""
+    """解析 TWSE 三個結果表格，回傳以權證代號索引的盤後資料。"""
     soup = BeautifulSoup(html, "html.parser")
     date_value = observed_on or datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
     result: dict[str, TwseWarrantMarketData] = {}
@@ -96,8 +106,8 @@ def parse_market_rows(html: str, observed_on: str | None = None) -> dict[str, Tw
             if not re.fullmatch(r"[0-9A-Z]{6}", code):
                 continue
 
-            # Prefer the best-bid IV. If the issuer did not quote a bid, use
-            # other official after-close IV values in decreasing relevance.
+            # 委買 IV 最接近投資人賣回時的造市水準；若缺少委買報價，
+            # 才依序改用委賣 IV、期間委買 IV、收盤 IV。
             implied_vol = next(
                 (value for value in (_percent(values[5]), _percent(values[6]), _percent(values[7]), _percent(values[16])) if value is not None),
                 None,
@@ -118,6 +128,7 @@ def _parse_market_rows_from_soup(soup: BeautifulSoup, observed_on: str) -> dict[
 
 
 def _issuer_filter(query_page: BeautifulSoup, warrant_name: str) -> str:
+    """把權證簡稱中的券商縮寫對應到 TWSE COMPANY 下拉選單值。"""
     issuer = next((alias for alias in ISSUER_ALIASES if alias in warrant_name), "")
     if not issuer:
         return ""
@@ -129,6 +140,7 @@ def _issuer_filter(query_page: BeautifulSoup, warrant_name: str) -> str:
 
 
 def _query_form(soup: BeautifulSoup, underlying_code: str, company: str) -> dict[str, str]:
+    """組合第一次送往 Query.aspx 的完整 WebForms 查詢表單。"""
     data = _hidden_fields(soup)
     data.update(
         {
@@ -152,6 +164,7 @@ def _query_form(soup: BeautifulSoup, underlying_code: str, company: str) -> dict
 
 
 def _page_targets(soup: BeautifulSoup) -> list[tuple[str, int]]:
+    """從 __doPostBack 連結擷取各 GridView 可翻閱的分頁。"""
     targets: set[tuple[str, int]] = set()
     pattern = re.compile(r"__doPostBack\('([^']+)','Page\$(\d+)'\)")
     for link in soup.select('a[href*="Page$"]'):
@@ -162,8 +175,10 @@ def _page_targets(soup: BeautifulSoup) -> list[tuple[str, int]]:
 
 
 async def _fetch_rows(underlying_code: str, warrant_code: str, warrant_name: str) -> dict[str, TwseWarrantMarketData]:
+    """完成同意頁、查詢頁及必要分頁的 WebForms 連線流程。"""
     headers = {"User-Agent": "Mozilla/5.0 WarrantScore/1.0"}
     async with httpx.AsyncClient(base_url=BASE_URL, follow_redirects=True, timeout=20, headers=headers) as client:
+        # 第一步先載入聲明頁並帶回 ViewState，再送出「繼續」。
         landing = await client.get("/Default.aspx")
         landing.raise_for_status()
         accept = _hidden_fields(_soup(landing))
@@ -172,6 +187,7 @@ async def _fetch_rows(underlying_code: str, warrant_code: str, warrant_name: str
         query_response.raise_for_status()
         query_page = _soup(query_response)
 
+        # stockNo 是標的股票代號，不是權證代號；券商篩選可大幅減少分頁。
         company = _issuer_filter(query_page, warrant_name)
         response = await client.post("/Query.aspx", data=_query_form(query_page, underlying_code, company))
         response.raise_for_status()
@@ -181,8 +197,7 @@ async def _fetch_rows(underlying_code: str, warrant_code: str, warrant_name: str
         if warrant_code.upper() in rows:
             return rows
 
-        # Issuer filtering normally makes one page sufficient. Follow every
-        # advertised result page so less common issuers/aliases still work.
+        # 一般在第一頁即可找到；若未找到，再模擬 GridView postback 翻頁。
         base_state = _hidden_fields(first_page)
         for grid, page in _page_targets(first_page):
             postback = dict(base_state)
@@ -201,7 +216,7 @@ async def fetch_twse_warrant_market_data(
     warrant_code: str,
     warrant_name: str = "",
 ) -> TwseWarrantMarketData | None:
-    """Fetch official TWSE after-close warrant metrics with a short cache."""
+    """取得官方 TWSE 盤後權證資料，並以短期記憶體快取降低網站負載。"""
     cache_key = (underlying_code, warrant_code.upper())
     cached = _row_cache.get(cache_key)
     now = monotonic()

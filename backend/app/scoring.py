@@ -2,6 +2,7 @@ from .models import ScoreItem, WarrantMetrics
 
 
 def _band(value: float, bands: list[tuple[float, float]]) -> float:
+    """依數值落入的第一個上限區間回傳分數。"""
     for threshold, points in bands:
         if value <= threshold:
             return points
@@ -9,6 +10,7 @@ def _band(value: float, bands: list[tuple[float, float]]) -> float:
 
 
 def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
+    """套用淘汰條件與十項權重，回傳總分、評級及逐項說明。"""
     # 淘汰機制：剩餘天數過短或委買量過少直接淘汰
     if m.days_to_expiry < 30:
         items = [ScoreItem(key="eliminated", label="淘汰：剩餘天數不足", score=0, max_score=100, note=f"剩餘 {m.days_to_expiry} 天 < 30 天")]
@@ -20,6 +22,7 @@ def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
     # 新權重配比，總分 100
     # 1) 隱含波動率合理性 (15)
     if m.implied_vol is None:
+        # 缺值採中性分，避免把「沒有資料」錯當成 0% 的優良 IV。
         iv_score = 7.5
         iv_note = "資料缺失，採中性分"
     else:
@@ -29,6 +32,7 @@ def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
 
     # 2) 隱含波動率穩定度 (10) - 低波動越好
     if m.iv_std is None:
+        # 累積歷史不足時仍可評分，但會在說明中清楚標示資料缺失。
         ivs_score = 5.0
         ivs_note = "資料缺失，採中性分"
     else:
@@ -40,6 +44,7 @@ def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
             ivs_note = f"14 日委買 IV 標準差 {m.iv_std:.2%}{count}"
 
     # 3) 買賣價差與掛單量 (15) - 結合 spread 與委託量
+    # 價差與掛單量各自評分後取平均，共占 15 分。
     spread_score = 7.5
     vol_score = 7.5
     if m.bid_ask_spread is not None:
@@ -86,6 +91,7 @@ def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
     strike_gap = abs(m.strike_price * m.exercise_ratio - m.warrant_price)
     price_quality = 7 if strike_gap >= 0 else 3
 
+    # 統一在此組裝前端評分拆解需要的 key、名稱、得分與說明。
     values = [
         ("iv_reasonable", "隱含波動率合理性", iv_score, 15, iv_note),
         ("iv_stability", "隱含波動率穩定度", ivs_score, 10, ivs_note),
