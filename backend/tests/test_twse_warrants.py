@@ -1,7 +1,7 @@
 import pytest
 
 from app import database
-from app.twse_warrants import _issuer_filter, parse_market_rows
+from app.twse_warrants import _issuer_filter, _postback_form, parse_market_rows
 from bs4 import BeautifulSoup
 
 
@@ -89,3 +89,19 @@ def test_all_issuer_aliases_match_twse_full_company_names(issuer, company_name, 
     )
 
     assert _issuer_filter(page, f"力積電{issuer}5B購04") == company_code
+
+
+def test_page_postback_keeps_stock_and_company_filters():
+    page = BeautifulSoup(
+        '<input type="hidden" name="__VIEWSTATE" value="state">',
+        "html.parser",
+    )
+
+    form = _postback_form(page, "3017", "9100", "GridCenter", 2)
+
+    assert form["stockNo"] == "3017"
+    assert form["COMPANY"] == "9100"
+    assert form["__VIEWSTATE"] == "state"
+    assert form["__EVENTTARGET"] == "GridCenter"
+    assert form["__EVENTARGUMENT"] == "Page$2"
+    assert "BtnQuery" not in form

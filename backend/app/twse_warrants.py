@@ -17,6 +17,8 @@ BASE_URL = "https://warrants.twse.com.tw"
 QUERY_PERIOD = "14"
 # 避免同一權證在短時間內重複觸發多次 WebForms 查詢。
 CACHE_TTL_SECONDS = 4 * 60 * 60
+# 防止上游分頁異常時無限翻頁；券商篩選後通常只需 1～3 次。
+MAX_PAGE_POSTBACKS = 30
 # TWSE 依價內外程度拆成三個 GridView，三者都可能包含目標權證。
 GRID_IDS = ("GridCenter", "GridUp", "GridDown")
 # 權證簡稱使用券商縮寫，TWSE COMPANY 選單則使用法定完整名稱。
@@ -177,6 +179,23 @@ def _page_targets(soup: BeautifulSoup) -> list[tuple[str, int]]:
     return sorted(targets, key=lambda item: (item[0], item[1]))
 
 
+def _postback_form(
+    soup: BeautifulSoup,
+    underlying_code: str,
+    company: str,
+    grid: str,
+    page: int,
+) -> dict[str, str]:
+    """建立 GridView 翻頁表單，保留原始標的與券商篩選條件。"""
+    # 瀏覽器 postback 會送出頁面上所有成功控制項，不只 ViewState。
+    # 若漏掉 stockNo/COMPANY，TWSE 會把第二頁重設為全市場查詢。
+    data = _query_form(soup, underlying_code, company)
+    data.pop("BtnQuery", None)
+    data["__EVENTTARGET"] = grid
+    data["__EVENTARGUMENT"] = f"Page${page}"
+    return data
+
+
 async def _fetch_rows(underlying_code: str, warrant_code: str, warrant_name: str) -> dict[str, TwseWarrantMarketData]:
     """完成同意頁、查詢頁及必要分頁的 WebForms 連線流程。"""
     headers = {"User-Agent": "Mozilla/5.0 WarrantScore/1.0"}
@@ -201,16 +220,25 @@ async def _fetch_rows(underlying_code: str, warrant_code: str, warrant_name: str
             return rows
 
         # 一般在第一頁即可找到；若未找到，再模擬 GridView postback 翻頁。
-        base_state = _hidden_fields(first_page)
-        for grid, page in _page_targets(first_page):
-            postback = dict(base_state)
-            postback["__EVENTTARGET"] = grid
-            postback["__EVENTARGUMENT"] = f"Page${page}"
+        # 每個新頁面可能公開下一段頁碼，因此用佇列持續發現後續頁次。
+        pending = [(grid, page, first_page) for grid, page in _page_targets(first_page)]
+        visited: set[tuple[str, int]] = set()
+        while pending and len(visited) < MAX_PAGE_POSTBACKS:
+            grid, page, source_page = pending.pop(0)
+            target = (grid, page)
+            if target in visited:
+                continue
+            visited.add(target)
+            postback = _postback_form(source_page, underlying_code, company, grid, page)
             page_response = await client.post("/Query.aspx", data=postback)
             page_response.raise_for_status()
-            rows.update(_parse_market_rows_from_soup(_soup(page_response), observed_on))
+            page_soup = _soup(page_response)
+            rows.update(_parse_market_rows_from_soup(page_soup, observed_on))
             if warrant_code.upper() in rows:
                 break
+            for next_target in _page_targets(page_soup):
+                if next_target not in visited:
+                    pending.append((*next_target, page_soup))
         return rows
 
 
