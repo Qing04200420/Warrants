@@ -19,22 +19,22 @@ QUERY_PERIOD = "14"
 CACHE_TTL_SECONDS = 4 * 60 * 60
 # TWSE 依價內外程度拆成三個 GridView，三者都可能包含目標權證。
 GRID_IDS = ("GridCenter", "GridUp", "GridDown")
-# 權證簡稱採券商縮寫，但 TWSE 下拉選單可能使用公司完整名稱。
-ISSUER_ALIASES = {
-    "中信": ("中信", "中國信託"),
-    "元大": ("元大",),
-    "國泰": ("國泰",),
-    "群益": ("群益",),
-    "凱基": ("凱基",),
-    "永豐": ("永豐",),
-    "富邦": ("富邦",),
-    "統一": ("統一",),
-    "兆豐": ("兆豐",),
-    "元富": ("元富",),
-    "第一金": ("第一金",),
-    "玉山": ("玉山",),
-    "台新": ("台新",),
-    "新光": ("新光",),
+# 權證簡稱使用券商縮寫，TWSE COMPANY 選單則使用法定完整名稱。
+# 名單依 TWSE 權證資訊揭露平台的目前造市券商選項建立。
+ISSUER_COMPANY_NAMES = {
+    "第一金": "第一金證券",
+    "統一": "統一綜合證券",
+    "中信": "中國信託綜合證券",
+    "兆豐": "兆豐證券",
+    "國票": "國票綜合證券",
+    "康和": "康和綜合證券",
+    "國泰": "國泰綜合證券",
+    "群益": "群益金鼎證券",
+    "凱基": "凱基證券",
+    "富邦": "富邦綜合證券",
+    "元大": "元大證券",
+    "永豐": "永豐金證券",
+    "台新": "台新綜合證券",
 }
 
 
@@ -129,12 +129,15 @@ def _parse_market_rows_from_soup(soup: BeautifulSoup, observed_on: str) -> dict[
 
 def _issuer_filter(query_page: BeautifulSoup, warrant_name: str) -> str:
     """把權證簡稱中的券商縮寫對應到 TWSE COMPANY 下拉選單值。"""
-    issuer = next((alias for alias in ISSUER_ALIASES if alias in warrant_name), "")
+    issuer = next((alias for alias in ISSUER_COMPANY_NAMES if alias in warrant_name), "")
     if not issuer:
         return ""
+    expected_name = ISSUER_COMPANY_NAMES[issuer]
     for option in query_page.select('select[name="COMPANY"] option[value]'):
-        option_text = option.get_text(" ", strip=True)
-        if any(candidate in option_text for candidate in ISSUER_ALIASES[issuer]):
+        # 移除版面空白後做完整名稱相等比對，避免「中信」對不到
+        # 「中國信託」，或短名稱誤配到其他券商。
+        option_text = re.sub(r"\s+", "", option.get_text(" ", strip=True))
+        if option_text == expected_name:
             return option.get("value", "")
     return ""
 

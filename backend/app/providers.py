@@ -68,7 +68,7 @@ def parse_warrant_page(html: str, code: str) -> tuple[str, StockQuote, WarrantMe
             break
     # 少數舊頁面完全省略標的代號，保留已確認資料作最後備援。
     known = {"067185": ("6770", "力積電")}
-    fallback_code, fallback_name = known.get(code, ("", re.sub(r"(?:中信|元大|國泰|群益|凱基|永豐|富邦|統一|兆豐|元富|第一金|玉山).*$", "", warrant_name)))
+    fallback_code, fallback_name = known.get(code, ("", re.sub(r"(?:中信|元大|國泰|群益|凱基|永豐|富邦|統一|兆豐|國票|康和|元富|第一金|玉山|台新|新光).*$", "", warrant_name)))
     fallback_name = stock_name_from_table or fallback_name
     if not fallback_code and fallback_name:
         try:

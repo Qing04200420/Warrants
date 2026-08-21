@@ -64,10 +64,28 @@ def test_iv_history_uses_one_sample_per_trading_date(tmp_path, monkeypatch):
     assert count == 2
 
 
-def test_issuer_alias_matches_twse_full_company_name():
+@pytest.mark.parametrize(
+    ("issuer", "company_name", "company_code"),
+    [
+        ("第一金", "第一金證券", "5380"),
+        ("統一", "統一綜合證券", "5850"),
+        ("中信", "中國信託綜合證券", "6160"),
+        ("兆豐", "兆豐證券", "7000"),
+        ("國票", "國票綜合證券", "7790"),
+        ("康和", "康和綜合證券", "8450"),
+        ("國泰", "國泰綜合證券", "8880"),
+        ("群益", "群益金鼎證券", "9100"),
+        ("凱基", "凱基證券", "9200"),
+        ("富邦", "富邦綜合證券", "9600"),
+        ("元大", "元大證券", "9800"),
+        ("永豐", "永豐金證券", "9A00"),
+        ("台新", "台新綜合證券", "9B00"),
+    ],
+)
+def test_all_issuer_aliases_match_twse_full_company_names(issuer, company_name, company_code):
     page = BeautifulSoup(
-        '<select name="COMPANY"><option value="6160">中國信託綜合證券</option></select>',
+        f'<select name="COMPANY"><option value="{company_code}"> {company_name} </option></select>',
         "html.parser",
     )
 
-    assert _issuer_filter(page, "力積電中信5B購04") == "6160"
+    assert _issuer_filter(page, f"力積電{issuer}5B購04") == company_code
