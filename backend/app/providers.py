@@ -49,7 +49,10 @@ def parse_warrant_page(html: str, code: str) -> tuple[str, StockQuote, WarrantMe
                     if match:
                         exercise_ratio = float(match.group())
                 joined = " ".join(values)
-                target = re.search(r"\b(\d{4,6})\b\s*([^\s\d]+)?", joined)
+                # Avoid matching digit sequences that are part of decimal numbers
+                # (e.g. the "0.0900" exercise ratio) by asserting the match
+                # is not immediately preceded by a digit or a dot.
+                target = re.search(r"(?<![\d.])(\d{4,6})\b\s*([^\s\d]+)?", joined)
                 if target and target.group(1) != code:
                     stock_code = target.group(1)
                     stock_name_from_table = target.group(2) or ""

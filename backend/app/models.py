@@ -29,6 +29,12 @@ class WarrantMetrics(BaseModel):
     moneyness_label: str
     effective_leverage: float
     expiry_date: str
+    # Optional market-derived fields for enhanced scoring
+    implied_vol: float | None = None
+    iv_std: float | None = None
+    bid_ask_spread: float | None = None
+    bid_volume: int | None = None
+    ask_volume: int | None = None
 
 
 class ScoreItem(BaseModel):
