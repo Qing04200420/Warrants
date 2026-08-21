@@ -14,6 +14,22 @@ BASE_URL = "https://warrants.twse.com.tw"
 QUERY_PERIOD = "14"
 CACHE_TTL_SECONDS = 4 * 60 * 60
 GRID_IDS = ("GridCenter", "GridUp", "GridDown")
+ISSUER_ALIASES = {
+    "中信": ("中信", "中國信託"),
+    "元大": ("元大",),
+    "國泰": ("國泰",),
+    "群益": ("群益",),
+    "凱基": ("凱基",),
+    "永豐": ("永豐",),
+    "富邦": ("富邦",),
+    "統一": ("統一",),
+    "兆豐": ("兆豐",),
+    "元富": ("元富",),
+    "第一金": ("第一金",),
+    "玉山": ("玉山",),
+    "台新": ("台新",),
+    "新光": ("新光",),
+}
 
 
 @dataclass(frozen=True)
@@ -102,12 +118,12 @@ def _parse_market_rows_from_soup(soup: BeautifulSoup, observed_on: str) -> dict[
 
 
 def _issuer_filter(query_page: BeautifulSoup, warrant_name: str) -> str:
-    aliases = ("中信", "元大", "國泰", "群益", "凱基", "永豐", "富邦", "統一", "兆豐", "元富", "第一金", "玉山", "台新", "新光")
-    issuer = next((alias for alias in aliases if alias in warrant_name), "")
+    issuer = next((alias for alias in ISSUER_ALIASES if alias in warrant_name), "")
     if not issuer:
         return ""
     for option in query_page.select('select[name="COMPANY"] option[value]'):
-        if issuer in option.get_text(" ", strip=True):
+        option_text = option.get_text(" ", strip=True)
+        if any(candidate in option_text for candidate in ISSUER_ALIASES[issuer]):
             return option.get("value", "")
     return ""
 

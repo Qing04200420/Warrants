@@ -1,7 +1,8 @@
 import pytest
 
 from app import database
-from app.twse_warrants import parse_market_rows
+from app.twse_warrants import _issuer_filter, parse_market_rows
+from bs4 import BeautifulSoup
 
 
 def _table_row(values):
@@ -61,3 +62,12 @@ def test_iv_history_uses_one_sample_per_trading_date(tmp_path, monkeypatch):
     std, count = database.record_iv_sample("03330T", "2026-08-21", 1.2)
     assert std == pytest.approx(0.1)
     assert count == 2
+
+
+def test_issuer_alias_matches_twse_full_company_name():
+    page = BeautifulSoup(
+        '<select name="COMPANY"><option value="6160">中國信託綜合證券</option></select>',
+        "html.parser",
+    )
+
+    assert _issuer_filter(page, "力積電中信5B購04") == "6160"
