@@ -16,7 +16,14 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="台股權證評分 API", version="1.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+# Allow local dev hosts (localhost and LAN) for development. Adjust in production.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://192.168.1.67:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/api/health")
