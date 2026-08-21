@@ -21,25 +21,41 @@ def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
     # 1) 隱含波動率合理性 (15)
     if m.implied_vol is None:
         iv_score = 7.5
+        iv_note = "資料缺失，採中性分"
     else:
         iv = m.implied_vol
         iv_score = _band(iv, [(0.2, 15), (0.35, 12), (0.6, 8), (1.0, 4), (999, 1)])
+        iv_note = f"隱含波動率 {iv:.2%}"
 
     # 2) 隱含波動率穩定度 (10) - 低波動越好
     if m.iv_std is None:
         ivs_score = 5.0
+        ivs_note = "資料缺失，採中性分"
     else:
         ivs_score = _band(m.iv_std, [(0.02, 10), (0.05, 8), (0.1, 6), (0.2, 3), (999, 1)])
+        ivs_note = f"波動率標準差 {m.iv_std:.2%}"
 
     # 3) 買賣價差與掛單量 (15) - 結合 spread 與委託量
     spread_score = 7.5
     vol_score = 7.5
     if m.bid_ask_spread is not None:
         spread_score = _band(m.bid_ask_spread, [(0.01, 15), (0.03, 12), (0.05, 8), (0.1, 4), (999, 1)])
-    if (m.bid_volume is not None) or (m.ask_volume is not None):
-        total_vol = (m.bid_volume or 0) + (m.ask_volume or 0)
+    volume_available = (m.bid_volume is not None) or (m.ask_volume is not None)
+    total_vol = None
+    if volume_available:
+        total_vol = sum(volume for volume in (m.bid_volume, m.ask_volume) if volume is not None)
         vol_score = _band(total_vol, [(100, 2), (500, 8), (2000, 12), (10000, 15), (9999999, 15)])
     liquidity_score = round((spread_score + vol_score) / 2, 1)
+    liquidity_notes = []
+    if m.bid_ask_spread is None:
+        liquidity_notes.append("買賣價差資料缺失（採中性分）")
+    else:
+        liquidity_notes.append(f"買賣價差 {m.bid_ask_spread:.4f}")
+    if total_vol is None:
+        liquidity_notes.append("掛單量資料缺失（採中性分）")
+    else:
+        liquidity_notes.append(f"總掛單量 {total_vol}")
+    liquidity_note = "；".join(liquidity_notes)
 
     # 4) 有效槓桿 (12)
     leverage = _band(abs(m.effective_leverage), [(2, 12), (5, 10), (10, 8), (15, 5), (999, 2)])
@@ -67,9 +83,9 @@ def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
     price_quality = 7 if strike_gap >= 0 else 3
 
     values = [
-        ("iv_reasonable", "隱含波動率合理性", iv_score, 15, f"implied_vol={m.implied_vol}"),
-        ("iv_stability", "隱含波動率穩定度", ivs_score, 10, f"iv_std={m.iv_std}"),
-        ("liquidity", "買賣價差與掛單量", liquidity_score, 15, f"spread={m.bid_ask_spread} vol={(m.bid_volume or 0)+(m.ask_volume or 0)}"),
+        ("iv_reasonable", "隱含波動率合理性", iv_score, 15, iv_note),
+        ("iv_stability", "隱含波動率穩定度", ivs_score, 10, ivs_note),
+        ("liquidity", "買賣價差與掛單量", liquidity_score, 15, liquidity_note),
         ("leverage", "有效槓桿", leverage, 12, f"{m.effective_leverage:.2f} 倍"),
         ("moneyness", "價內外程度", money, 10, f"{m.moneyness_percent:.2f}% {m.moneyness_label}"),
         ("delta", "Delta", delta, 8, f"Delta {m.delta:.4f}"),
@@ -82,4 +98,3 @@ def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
     total = round(sum(item.score for item in items), 1)
     rating = "優良" if total >= 80 else "良好" if total >= 65 else "普通" if total >= 50 else "偏弱"
     return total, rating, items
-
