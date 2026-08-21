@@ -28,3 +28,5 @@ function App(){
 }
 createRoot(document.getElementById('root')).render(<Provider store={store}><App/></Provider>)
 
+export { money, Metric, App }
+
