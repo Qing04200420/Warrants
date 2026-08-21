@@ -7,6 +7,7 @@ def test_score_is_explainable_and_bounded():
     score, rating, items = calculate_score(metrics)
     assert 0 <= score <= 100
     assert rating in {"優良", "良好", "普通", "偏弱"}
-    assert len(items) == 8
+    # scoring now includes IV and liquidity related items; expect 10 items
+    assert len(items) == 10
     assert score == sum(item.score for item in items)
 
