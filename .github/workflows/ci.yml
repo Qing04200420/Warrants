@@ -50,6 +50,8 @@ jobs:
       - name: Build frontend
         run: npm run build
         working-directory: frontend
+        env:
+          VITE_API_BASE_URL: https://warrants-api-qing04200420.onrender.com
       - name: Configure GitHub Pages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/configure-pages@v5

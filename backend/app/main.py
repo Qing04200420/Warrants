@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import os
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,10 +18,20 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="台股權證評分 API", version="1.0.0", lifespan=lifespan)
-# Allow local dev hosts (localhost and LAN) for development. Adjust in production.
+default_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://192.168.1.67:3000",
+    "https://qing04200420.github.io",
+]
+configured_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://192.168.1.67:3000"],
+    allow_origins=list(dict.fromkeys(default_origins + configured_origins)),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: warrants-api-qing04200420
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: CORS_ORIGINS
+        value: https://qing04200420.github.io
