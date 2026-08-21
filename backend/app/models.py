@@ -35,6 +35,10 @@ class WarrantMetrics(BaseModel):
     bid_ask_spread: float | None = None
     bid_volume: int | None = None
     ask_volume: int | None = None
+    market_data_source: str | None = None
+    market_data_date: str | None = None
+    iv_std_source: str | None = None
+    iv_history_count: int | None = None
 
 
 class ScoreItem(BaseModel):
@@ -56,4 +60,3 @@ class Analysis(BaseModel):
     score_items: list[ScoreItem]
     analyzed_at: datetime
     warning: str | None = None
-

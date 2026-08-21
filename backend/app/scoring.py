@@ -33,7 +33,11 @@ def calculate_score(m: WarrantMetrics) -> tuple[float, str, list[ScoreItem]]:
         ivs_note = "資料缺失，採中性分"
     else:
         ivs_score = _band(m.iv_std, [(0.02, 10), (0.05, 8), (0.1, 6), (0.2, 3), (999, 1)])
-        ivs_note = f"波動率標準差 {m.iv_std:.2%}"
+        if m.iv_std_source == "twse_14d_max_change_proxy":
+            ivs_note = f"TWSE 14 日委買 IV 最大變動 {m.iv_std:.2%}（暫代穩定度）"
+        else:
+            count = f"（{m.iv_history_count} 筆盤後資料）" if m.iv_history_count else ""
+            ivs_note = f"14 日委買 IV 標準差 {m.iv_std:.2%}{count}"
 
     # 3) 買賣價差與掛單量 (15) - 結合 spread 與委託量
     spread_score = 7.5
