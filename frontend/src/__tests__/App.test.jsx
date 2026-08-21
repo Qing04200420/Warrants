@@ -1,6 +1,7 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import '@testing-library/jest-dom'
+import { test, expect } from 'vitest'
+import '@testing-library/jest-dom/vitest'
 import { Metric, money } from '../main'
 
 test('money formats numbers and empty', ()=>{

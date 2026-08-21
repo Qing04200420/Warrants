@@ -26,7 +26,19 @@ function App(){
     <footer>評分僅供研究與比較，不構成投資建議。</footer>
   </main>
 }
-createRoot(document.getElementById('root')).render(<Provider store={store}><App/></Provider>)
+
+const rootElement =
+  typeof document !== 'undefined'
+    ? document.getElementById('root')
+    : null
+
+if (rootElement) {
+  createRoot(rootElement).render(
+    <Provider store={store}>
+      <App />
+    </Provider>
+  )
+}
 
 export { money, Metric, App }
 
