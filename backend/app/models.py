@@ -51,6 +51,41 @@ class StockScoreResponse(BaseModel):
     warning: str | None = None
 
 
+class WarrantRecommendationRequest(BaseModel):
+    underlying_code: str = Field(pattern=r"^[0-9A-Z]{4,6}$", examples=["2330"])
+    underlying_name: str = Field(min_length=1, max_length=40, examples=["台積電"])
+    stock_price: float = Field(gt=0)
+    limit: int = Field(default=5, ge=1, le=10)
+
+    @field_validator("underlying_code", mode="before")
+    @classmethod
+    def normalize_underlying_code(cls, value):
+        return str(value).strip().upper()
+
+
+class WarrantRecommendation(BaseModel):
+    code: str
+    name: str
+    strike_price: float
+    exercise_ratio: float
+    last_trading_date: str
+    expiry_date: str
+    days_to_last_trading: int
+    moneyness: str
+    strike_gap_percent: float
+    match_score: float
+    reason: str
+
+
+class WarrantRecommendationResponse(BaseModel):
+    underlying_code: str
+    underlying_name: str
+    stock_price: float
+    recommendations: list[WarrantRecommendation]
+    source: str = "TWSE 上市權證基本條款"
+    notice: str = "推薦為基本條款初選，不含即時流動性與隱含波動率；交易前請再查看權證評分。"
+
+
 class AnalyzeRequest(BaseModel):
     """分析端點輸入：接受數字或含英文字尾的六碼權證代號。"""
     code: str = Field(pattern=r"^[0-9A-Z]{6}$", examples=["067185", "03002T"])

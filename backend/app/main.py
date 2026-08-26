@@ -7,12 +7,23 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import clear, history, init_db, record_iv_sample, save
 from .estimation import estimate_warrant
-from .models import Analysis, AnalyzeRequest, EstimateRequest, StockScoreRequest, StockScoreResponse, WarrantEstimate
+from .models import (
+    Analysis,
+    AnalyzeRequest,
+    EstimateRequest,
+    StockScoreRequest,
+    StockScoreResponse,
+    WarrantEstimate,
+    WarrantRecommendationRequest,
+    WarrantRecommendationResponse,
+)
 from .providers import fetch_stock_quote, fetch_warrant
+from .recommendations import recommend_warrants
 from .scoring import calculate_score
 from .stock_history import StockHistoryProviderError, fetch_stock_history
 from .stock_scoring import calculate_stock_score
 from .twse_warrants import fetch_twse_warrant_market_data
+from .twse_openapi import fetch_official_warrants
 
 
 @asynccontextmanager
@@ -75,6 +86,29 @@ async def score_stock(request: StockScoreRequest):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except http_error_types() as exc:
         raise HTTPException(status_code=502, detail="股票歷史行情服務暫時無法連線") from exc
+
+
+@app.post("/api/warrants/recommend", response_model=WarrantRecommendationResponse)
+async def recommend(request: WarrantRecommendationRequest):
+    """依標的現價、履約價與剩餘期間推薦認購權證候選名單。"""
+    try:
+        warrants = await fetch_official_warrants()
+        items = recommend_warrants(
+            list(warrants.values()),
+            underlying_name=request.underlying_name,
+            stock_price=request.stock_price,
+            limit=request.limit,
+        )
+        return WarrantRecommendationResponse(
+            underlying_code=request.underlying_code,
+            underlying_name=request.underlying_name,
+            stock_price=request.stock_price,
+            recommendations=items,
+        )
+    except http_error_types() as exc:
+        raise HTTPException(status_code=502, detail="證交所權證基本資料暫時無法連線") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="證交所權證基本資料格式暫時無法解析") from exc
 
 
 @app.post("/api/warrants/analyze", response_model=Analysis)

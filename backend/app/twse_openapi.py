@@ -63,7 +63,8 @@ def parse_warrant_records(records: list[dict[str, str]]) -> dict[str, OfficialWa
     return result
 
 
-async def fetch_official_warrant(code: str) -> OfficialWarrant:
+async def fetch_official_warrants() -> dict[str, OfficialWarrant]:
+    """取得目前上市權證基本檔，並共用六小時快取。"""
     global _cache
     now = monotonic()
     if _cache is None or now - _cache[0] >= CACHE_TTL_SECONDS:
@@ -74,8 +75,13 @@ async def fetch_official_warrant(code: str) -> OfficialWarrant:
         if not isinstance(payload, list):
             raise ValueError("TWSE OpenAPI 回傳格式不正確")
         _cache = (now, parse_warrant_records(payload))
+    return _cache[1]
 
-    item = _cache[1].get(code.upper())
+
+async def fetch_official_warrant(code: str) -> OfficialWarrant:
+    warrants = await fetch_official_warrants()
+
+    item = warrants.get(code.upper())
     if item is None:
         raise ValueError("證交所查無此權證，請確認代號或是否已下市")
     return item

@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {Provider, useDispatch, useSelector} from 'react-redux'
-import {analyze, clearHistory, estimate as estimateWarrant, loadHistory, scoreStock, store} from './store'
+import {analyze, clearHistory, estimate as estimateWarrant, loadHistory, recommendWarrants, scoreStock, store} from './store'
 import './styles.css'
 import './not-found.css'
 
@@ -63,6 +63,7 @@ function Dashboard(){
   const dispatch=useDispatch(), {current,history,status,error}=useSelector(s=>s.warrant)
   const [code,setCode]=useState('067185')
   useEffect(()=>{dispatch(loadHistory())},[dispatch])
+  useEffect(()=>{if(current?.warrant_code)setCode(current.warrant_code)},[current?.warrant_code])
   const submit=e=>{e.preventDefault(); if(/^[0-9A-Z]{6}$/.test(code)) dispatch(analyze(code))}
   return <>
     <header><div><p className="eyebrow">TAIWAN WARRANT LAB</p><h1>權證評分儀表板</h1><p>把複雜的風險參數，整理成一眼能比較的分數。</p></div><div className="market-dot">● 台股資料</div></header>
@@ -83,7 +84,7 @@ const scoreGroups=['大盤環境','日線趨勢','週線趨勢','價格結構','
 
 function StockScorePage(){
   const dispatch=useDispatch()
-  const {stockScore,stockScoreStatus,stockScoreError}=useSelector(state=>state.warrant)
+  const {stockScore,stockScoreStatus,stockScoreError,warrantRecommendations,recommendationStatus,recommendationError}=useSelector(state=>state.warrant)
   const [form,setForm]=useState({code:'2330',entry_price:'',stop_loss_price:'',target_price:''})
   const update=(key,value)=>setForm(current=>({...current,[key]:value}))
   const numbers=[form.entry_price,form.stop_loss_price,form.target_price].map(toNumber)
@@ -91,12 +92,21 @@ function StockScorePage(){
   const codeValid=/^[0-9A-Z]{4,6}$/.test(form.code)
   const loading=stockScoreStatus==='loading'
   const result=stockScore?.code===form.code?stockScore:null
+  const recommendationResult=warrantRecommendations?.underlying_code===result?.code?warrantRecommendations:null
   const submit=event=>{
     event.preventDefault()
     if(codeValid&&planValid) dispatch(scoreStock({...form,entry_price:numbers[0],stop_loss_price:numbers[1],target_price:numbers[2]}))
   }
   const n=value=>value==null?'—':Number(value).toLocaleString('zh-TW',{maximumFractionDigits:2})
   const condition=value=><span className={`condition ${value?'pass':'fail'}`}>{value?'成立':'未成立'}</span>
+  const requestRecommendations=()=>{
+    if(!result) return
+    dispatch(recommendWarrants({underlying_code:result.code,underlying_name:result.name,stock_price:result.close,limit:5}))
+  }
+  const openWarrantScore=code=>{
+    dispatch(analyze(code))
+    window.location.hash='#dashboard'
+  }
 
   return <div className="stock-score-page">
     <header className="stock-score-header"><div><p className="eyebrow">UNDERLYING TREND SCORE</p><h1>股票標的評分</h1><p>先判斷大盤，再核對日線、週線、價格結構、量價與動能，最後把交易計畫的風險報酬納入同一個 100 分量表。</p></div><div className="formula-chip"><span>評分目的</span><strong>找出較適合偏多／認購權證策略的標的</strong></div></header>
@@ -127,6 +137,20 @@ function StockScorePage(){
       </section>
 
       <section className="risk-reward-card"><div><p className="eyebrow">TRADE PLAN</p><h3>風險報酬比</h3></div><div className="risk-equation"><div><span>進場</span><strong>{n(result.risk_reward.entry)}</strong></div><div><span>停損</span><strong>{n(result.risk_reward.stop_loss)}</strong></div><div><span>目標</span><strong>{n(result.risk_reward.target)}</strong></div><div className="ratio"><span>報酬 ÷ 風險</span><strong>{n(result.risk_reward.ratio)} : 1</strong></div></div></section>
+
+      <section className="warrant-recommendation" aria-live="polite">
+        <div className="recommendation-heading"><div><p className="eyebrow">WARRANT MATCH</p><h2>此標的的認購權證候選</h2><p>以收盤價 {n(result.close)} 元比對履約價與剩餘期間，先做基本條款初選。</p></div><button type="button" onClick={requestRecommendations} disabled={recommendationStatus==='loading'}>{recommendationStatus==='loading'?'篩選權證中…':'推薦此標的權證'}</button></div>
+        {recommendationError&&<p className="recommendation-error">{recommendationError}</p>}
+        {recommendationResult&&(recommendationResult.recommendations.length>0?<>
+          <div className="recommendation-grid">{recommendationResult.recommendations.map(item=><article className="recommendation-card" key={item.code}>
+            <div className="recommendation-card-title"><div><span>{item.code}</span><h3>{item.name}</h3></div><strong aria-label={`條款符合度 ${n(item.match_score)} 分`} title="條款符合度">{n(item.match_score)}</strong></div>
+            <p>{item.reason}</p>
+            <dl><div><dt>履約價</dt><dd>{n(item.strike_price)} 元</dd></div><div><dt>行使比例</dt><dd>{n(item.exercise_ratio)}</dd></div><div><dt>最後交易日</dt><dd>{item.last_trading_date}</dd></div></dl>
+            <button type="button" onClick={()=>openWarrantScore(item.code)}>查看權證評分</button>
+          </article>)}</div>
+          <p className="recommendation-notice">{recommendationResult.notice}</p>
+        </>:<p className="recommendation-empty">目前找不到剩餘至少 30 天、且履約價在現價 ±20% 內的上市認購權證。</p>)}
+      </section>
 
       <section className="stock-breakdown"><div className="section-title"><div><p className="eyebrow">SCORE BREAKDOWN</p><h2>評分明細</h2></div><p>每一分都可回溯到實際條件</p></div><div className="score-group-grid">{scoreGroups.map(group=>{
         const rows=result.items.filter(item=>item.group===group)

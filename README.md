@@ -39,6 +39,7 @@ npm run dev
 - `POST /api/warrants/analyze`：查詢並保存快照，body: `{ "code": "067185" }`
 - `POST /api/warrants/estimate`：自動載入最新條款、行情及隱波並估價；body 最少只需 `{ "code": "067185" }`，亦可傳入 `stock_price`、`implied_vol`、`valuation_date`、`risk_free_rate` 覆寫情境。
 - `POST /api/stocks/score`：股票多頭技術面評分，body: `{ "code": "2330", "entry_price": 2400, "stop_loss_price": 2300, "target_price": 2600 }`。
+- `POST /api/warrants/recommend`：依標的現價、履約價與剩餘期間推薦認購權證候選，body: `{ "underlying_code": "2330", "underlying_name": "台積電", "stock_price": 2400, "limit": 5 }`。
 - `GET /api/history?code=067185&limit=30`：歷史紀錄
 - `DELETE /api/history`：清除歷史紀錄
 - `GET /api/health`：健康檢查
