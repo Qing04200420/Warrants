@@ -51,8 +51,8 @@ function SiteNav({page, onNavigate}) {
       <span className="brand-mark">W</span><span>投資評分工具</span>
     </a>
     <div className="nav-links">
-      <a className={page==='dashboard'?'active':''} href="#dashboard" onClick={event=>onNavigate(event,'dashboard')}>權證評分</a>
       <a className={page==='stock-score'?'active':''} href="#stock-score" onClick={event=>onNavigate(event,'stock-score')}>標的評分</a>
+      <a className={page==='dashboard'?'active':''} href="#dashboard" onClick={event=>onNavigate(event,'dashboard')}>權證評分</a>
       <a className={page==='calculator'?'active':''} href="#calculator" onClick={event=>onNavigate(event,'calculator')}>價格試算</a>
     </div>
   </nav>
