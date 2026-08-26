@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client'
 import {Provider, useDispatch, useSelector} from 'react-redux'
 import {analyze, clearHistory, estimate as estimateWarrant, loadHistory, scoreStock, store} from './store'
 import './styles.css'
+import './not-found.css'
 
 const money = n => n == null ? '—' : Number(n).toLocaleString('zh-TW',{maximumFractionDigits:2})
 const percent = n => n == null ? '—' : `${(Number(n)*100).toFixed(2)}%`
@@ -47,7 +48,7 @@ function calculateBlackScholesWarrant(stockPrice, strikePrice, exerciseRatio, da
 
 function SiteNav({page, onNavigate}) {
   return <nav className="site-nav" aria-label="主要導覽">
-    <a className="brand" href="#dashboard" onClick={event=>onNavigate(event,'dashboard')}>
+    <a className="brand" href="#stock-score" onClick={event=>onNavigate(event,'stock-score')}>
       <span className="brand-mark">W</span><span>投資評分工具</span>
     </a>
     <div className="nav-links">
@@ -234,8 +235,25 @@ function CalculatorPage(){
   </div>
 }
 
+function NotFoundPage({onNavigate}) {
+  return <section className="not-found-page">
+    <p className="eyebrow">PAGE NOT FOUND</p>
+    <strong>404</strong>
+    <h1>找不到此頁面</h1>
+    <p>您輸入的網址不存在，或頁面已經移動。</p>
+    <a href="#stock-score" onClick={event=>onNavigate(event,'stock-score')}>返回標的評分</a>
+  </section>
+}
+
+function getPageFromHash(hash) {
+  if (!hash || hash==='#' || hash==='#stock-score') return 'stock-score'
+  if (hash==='#dashboard') return 'dashboard'
+  if (hash==='#calculator') return 'calculator'
+  return 'not-found'
+}
+
 function App(){
-  const getPage=()=>window.location.hash==='#calculator'?'calculator':window.location.hash==='#stock-score'?'stock-score':'dashboard'
+  const getPage=()=>getPageFromHash(window.location.hash)
   const [page,setPage]=useState(getPage)
   useEffect(()=>{
     const syncPage=()=>setPage(getPage())
@@ -245,7 +263,14 @@ function App(){
   const navigate=(event,nextPage)=>{event.preventDefault();window.location.hash=nextPage;setPage(nextPage)}
   return <main>
     <SiteNav page={page} onNavigate={navigate}/>
-    {page==='calculator'?<CalculatorPage/>:page==='stock-score'?<StockScorePage/>:<Dashboard/>}
+    {page==='calculator'
+      ? <CalculatorPage/>
+      : page==='stock-score'
+        ? <StockScorePage/>
+        : page==='dashboard'
+          ? <Dashboard/>
+          : <NotFoundPage onNavigate={navigate}/>
+    }
     <footer>內容僅供研究與試算，不構成投資建議。</footer>
   </main>
 }
@@ -263,5 +288,5 @@ if (rootElement) {
   )
 }
 
-export { money, Metric, MODEL_ASSUMPTIONS, businessDaysBetween, calculateBlackScholesWarrant, StockScorePage, CalculatorPage, App }
+export { money, Metric, MODEL_ASSUMPTIONS, businessDaysBetween, calculateBlackScholesWarrant, StockScorePage, CalculatorPage, NotFoundPage, getPageFromHash, App }
 

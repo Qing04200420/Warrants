@@ -1,0 +1,37 @@
+.not-found-page {
+  display: grid;
+  justify-items: center;
+  max-width: 680px;
+  margin: 50px auto 90px;
+  padding: 70px 28px;
+  border-radius: 24px;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 12px 40px #253a3020;
+}
+
+.not-found-page > strong {
+  color: #237a58;
+  font: 900 clamp(76px, 16vw, 148px) / .9 Georgia, serif;
+}
+
+.not-found-page h1 {
+  margin: 20px 0 10px;
+  font-size: clamp(30px, 5vw, 46px);
+  letter-spacing: -.04em;
+}
+
+.not-found-page > p:not(.eyebrow) {
+  margin-bottom: 26px;
+  color: #74817b;
+}
+
+.not-found-page > a {
+  padding: 12px 20px;
+  border-radius: 11px;
+  background: #173c31;
+  color: #fff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
+}

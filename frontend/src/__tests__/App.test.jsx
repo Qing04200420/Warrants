@@ -1,9 +1,9 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { test, expect } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { Metric, StockScorePage, businessDaysBetween, calculateBlackScholesWarrant, money } from '../main'
+import { App, Metric, StockScorePage, businessDaysBetween, calculateBlackScholesWarrant, getPageFromHash, money } from '../main'
 import { store } from '../store'
 
 test('money formats numbers and empty', ()=>{
@@ -55,4 +55,19 @@ test('StockScorePage requires a complete trade plan', ()=>{
   expect(screen.getByRole('heading',{name:'股票標的評分'})).toBeInTheDocument()
   expect(screen.getByRole('button',{name:'開始評分'})).toBeDisabled()
   expect(screen.getByLabelText('股票代號')).toHaveValue('2330')
+})
+
+test('empty hash defaults to stock score page', ()=>{
+  expect(getPageFromHash('')).toBe('stock-score')
+  window.location.hash=''
+  const view=render(<Provider store={store}><App /></Provider>)
+  expect(within(view.container).getByRole('heading',{name:'股票標的評分'})).toBeInTheDocument()
+})
+
+test('unknown hash renders 404 page', ()=>{
+  expect(getPageFromHash('#missing-page')).toBe('not-found')
+  window.location.hash='#missing-page'
+  const view=render(<Provider store={store}><App /></Provider>)
+  expect(within(view.container).getByRole('heading',{name:'找不到此頁面'})).toBeInTheDocument()
+  expect(within(view.container).getByRole('link',{name:'返回標的評分'})).toHaveAttribute('href','#stock-score')
 })
