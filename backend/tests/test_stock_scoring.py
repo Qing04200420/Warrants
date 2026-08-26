@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models import StockScoreRequest
-from app.stock_history import DailyBar, StockHistory, _daily_from_kbars
+from app.stock_history import DailyBar, StockHistory, _daily_from_kbars, _from_yfinance_sync
 from app.stock_scoring import calculate_stock_score
 
 
@@ -74,3 +74,37 @@ def test_minute_kbars_are_aggregated_to_daily_ohlcv():
     assert bars[0].low == 99
     assert bars[0].close == 104
     assert bars[0].volume == 30
+
+
+def test_otc_stock_uses_two_suffix_without_querying_tw_first(monkeypatch):
+    import pandas as pd
+    import yfinance as yf
+
+    dates = pd.date_range("2026-01-01", periods=90, freq="B")
+    frame = pd.DataFrame(
+        {
+            "Open": [240.0] * 90,
+            "High": [252.0] * 90,
+            "Low": [238.0] * 90,
+            "Close": [249.0] * 90,
+            "Volume": [1000] * 90,
+        },
+        index=dates,
+    )
+    requested = []
+
+    class FakeTicker:
+        def __init__(self, symbol):
+            requested.append(symbol)
+            if symbol not in {"4931.TWO", "^TWII"}:
+                raise AssertionError(f"不應查詢錯誤市場：{symbol}")
+
+        def history(self, **_):
+            return frame
+
+    monkeypatch.setattr(yf, "Ticker", FakeTicker)
+
+    result = _from_yfinance_sync("4931")
+
+    assert requested == ["4931.TWO", "^TWII"]
+    assert result.source == "Yahoo Finance 日線備援（4931.TWO / ^TWII）"

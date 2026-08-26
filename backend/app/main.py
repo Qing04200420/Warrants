@@ -10,7 +10,7 @@ from .estimation import estimate_warrant
 from .models import Analysis, AnalyzeRequest, EstimateRequest, StockScoreRequest, StockScoreResponse, WarrantEstimate
 from .providers import fetch_stock_quote, fetch_warrant
 from .scoring import calculate_score
-from .stock_history import fetch_stock_history
+from .stock_history import StockHistoryProviderError, fetch_stock_history
 from .stock_scoring import calculate_stock_score
 from .twse_warrants import fetch_twse_warrant_market_data
 
@@ -71,6 +71,8 @@ async def score_stock(request: StockScoreRequest):
         return calculate_stock_score(history_data, request)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except StockHistoryProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except http_error_types() as exc:
         raise HTTPException(status_code=502, detail="股票歷史行情服務暫時無法連線") from exc
 

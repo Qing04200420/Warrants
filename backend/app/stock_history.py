@@ -37,6 +37,10 @@ CACHE_TTL_SECONDS = 15 * 60
 _cache: dict[str, tuple[float, StockHistory]] = {}
 
 
+class StockHistoryProviderError(RuntimeError):
+    """歷史行情供應商連線或格式錯誤。"""
+
+
 def _daily_from_kbars(payloads: list[dict]) -> list[DailyBar]:
     grouped: dict[date, dict[str, float]] = {}
     for payload in payloads:
@@ -137,19 +141,34 @@ def _from_yfinance_sync(code: str) -> StockHistory:
     import twstock
     import yfinance as yf
 
+    item = twstock.codes.get(code)
+    # twstock 的 data_source 可直接辨識上市／上櫃，避免上櫃股票先查不存在的 .TW。
+    # 即使靜態代碼表缺漏，仍保留另一市場作為第二順位。
+    suffixes = (".TWO", ".TW") if item and item.data_source == "tpex" else (".TW", ".TWO")
     frame = None
     symbol = ""
-    for suffix in (".TW", ".TWO"):
-        candidate = yf.Ticker(code + suffix).history(period="1y", interval="1d", auto_adjust=True)
+    provider_errors: list[Exception] = []
+    for suffix in suffixes:
+        try:
+            candidate = yf.Ticker(code + suffix).history(period="1y", interval="1d", auto_adjust=True)
+        except Exception as exc:
+            # 某些 yfinance/curl 版本會對不存在的市場後綴直接拋錯；
+            # 單一候選失敗不應阻止系統繼續嘗試另一個市場。
+            provider_errors.append(exc)
+            continue
         if not candidate.empty:
             frame, symbol = candidate, code + suffix
             break
     if frame is None:
+        if provider_errors and len(provider_errors) == len(suffixes):
+            raise StockHistoryProviderError("Yahoo Finance 股票日線服務暫時無法連線") from provider_errors[-1]
         raise ValueError("查無股票歷史行情，請確認股票代號")
-    index_frame = yf.Ticker("^TWII").history(period="1y", interval="1d", auto_adjust=True)
+    try:
+        index_frame = yf.Ticker("^TWII").history(period="1y", interval="1d", auto_adjust=True)
+    except Exception as exc:
+        raise StockHistoryProviderError("Yahoo Finance 加權指數日線服務暫時無法連線") from exc
     if index_frame.empty:
         raise ValueError("查無加權指數歷史行情")
-    item = twstock.codes.get(code)
     return StockHistory(
         code=code,
         name=item.name if item else code,
