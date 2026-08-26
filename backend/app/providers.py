@@ -133,8 +133,20 @@ def fetch_stock_quote(stock: StockQuote) -> tuple[StockQuote, str | None]:
             rt, info = data["realtime"], data["info"]
             def f(key):
                 value = rt.get(key)
+                if isinstance(value, list):
+                    value = next((item for item in value if item not in (None, "-", "")), None)
                 return float(value) if value not in (None, "-", "") else None
-            return StockQuote(code=stock.code, name=info.get("name") or stock.name, price=f("latest_trade_price"), open=f("open"), high=f("high"), low=f("low"), volume=int(float(rt.get("accumulate_trade_volume") or 0)), source="twstock / TWSE", quoted_at=info.get("time")), None
+            last_price = f("latest_trade_price")
+            quote_warning = None
+            if last_price is None:
+                bid, ask = f("best_bid_price"), f("best_ask_price")
+                if bid is not None and ask is not None:
+                    last_price = (bid + ask) / 2
+                    quote_warning = "標的最新成交價暫缺，試算改採最佳一檔買賣價中間值。"
+                else:
+                    last_price = f("open")
+                    quote_warning = "標的最新成交價暫缺，試算暫採當日開盤價。"
+            return StockQuote(code=stock.code, name=info.get("name") or stock.name, price=last_price, open=f("open"), high=f("high"), low=f("low"), volume=int(float(rt.get("accumulate_trade_volume") or 0)), source="twstock / TWSE", quoted_at=info.get("time")), quote_warning
     except Exception:
         pass
 

@@ -1,10 +1,113 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class StockScoreRequest(BaseModel):
+    """股票多頭技術面評分與交易計畫。"""
+    code: str = Field(pattern=r"^[0-9A-Z]{4,6}$", examples=["2330"])
+    entry_price: float = Field(gt=0)
+    stop_loss_price: float = Field(gt=0)
+    target_price: float = Field(gt=0)
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_stock_code(cls, value):
+        return str(value).strip().upper()
+
+    @model_validator(mode="after")
+    def validate_long_plan(self):
+        if not self.stop_loss_price < self.entry_price < self.target_price:
+            raise ValueError("多頭交易計畫必須符合：停損價 < 進場價 < 目標價")
+        return self
+
+
+class StockScoreItem(BaseModel):
+    group: str
+    key: str
+    label: str
+    score: float
+    max_score: float
+    passed: bool
+    note: str
+
+
+class StockScoreResponse(BaseModel):
+    code: str
+    name: str
+    as_of: str
+    close: float
+    score: float
+    rating: str
+    summary: str
+    market: dict[str, float | bool | str | None]
+    daily: dict[str, float | bool | str | None]
+    weekly: dict[str, float | bool | str | None]
+    price_structure: dict[str, float | bool | str | None]
+    volume: dict[str, float | bool | str | None]
+    momentum: dict[str, float | bool | str | None]
+    risk_reward: dict[str, float | bool | str | None]
+    items: list[StockScoreItem]
+    source: str
+    warning: str | None = None
 
 
 class AnalyzeRequest(BaseModel):
-    """分析端點輸入：目前接受傳統六碼數字權證代號。"""
-    code: str = Field(pattern=r"^\d{6}$", examples=["067185"])
+    """分析端點輸入：接受數字或含英文字尾的六碼權證代號。"""
+    code: str = Field(pattern=r"^[0-9A-Z]{6}$", examples=["067185", "03002T"])
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def normalize_code(cls, value):
+        return str(value).strip().upper()
+
+
+class EstimateRequest(AnalyzeRequest):
+    """代號為必填；其他欄位空白時自動採最新市場資料。"""
+    stock_price: float | None = Field(default=None, ge=0)
+    implied_vol: float | None = Field(default=None, gt=0, le=5)
+    valuation_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    risk_free_rate: float = Field(default=0.015, ge=-0.1, le=1)
+
+
+class WarrantContract(BaseModel):
+    code: str
+    name: str
+    call_put: str
+    type_label: str
+    underlying_code: str
+    underlying_name: str
+    strike_price: float
+    exercise_ratio: float
+    last_trading_date: str
+    expiry_date: str
+    terms_source: str
+    terms_date: str
+
+
+class WarrantQuote(BaseModel):
+    price: float | None = None
+    bid: float | None = None
+    ask: float | None = None
+    source: str
+    quoted_at: str | None = None
+
+
+class WarrantEstimate(BaseModel):
+    contract: WarrantContract
+    stock: StockQuote
+    warrant_quote: WarrantQuote
+    valuation_date: str
+    trading_days_to_expiry: int
+    market_holidays: list[str]
+    implied_vol: float
+    volatility_source: str
+    risk_free_rate: float
+    theoretical_price: float
+    intrinsic_value: float
+    time_value: float
+    delta: float
+    data_sources: list[str]
+    warning: str | None = None
 
 
 class StockQuote(BaseModel):

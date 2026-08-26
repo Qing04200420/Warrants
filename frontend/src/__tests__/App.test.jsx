@@ -1,8 +1,10 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
+import { Provider } from 'react-redux'
 import { test, expect } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { Metric, calculateWarrantValues, money } from '../main'
+import { Metric, StockScorePage, businessDaysBetween, calculateBlackScholesWarrant, money } from '../main'
+import { store } from '../store'
 
 test('money formats numbers and empty', ()=>{
   expect(money(null)).toBe('—')
@@ -15,23 +17,42 @@ test('Metric displays label and value', ()=>{
   expect(screen.getByText('100')).toBeInTheDocument()
 })
 
-test('calculateWarrantValues matches the example', ()=>{
-  expect(calculateWarrantValues(130,120,0.1,1.5)).toEqual({
+test('calculateBlackScholesWarrant estimates the example directly', ()=>{
+  const result=calculateBlackScholesWarrant(130,120,0.1,90)
+  expect(result.intrinsicValue).toBe(1)
+  expect(result.timeValue).toBeCloseTo(0.3768,3)
+  expect(result.warrantPrice).toBeCloseTo(1.3768,3)
+})
+
+test('calculateBlackScholesWarrant equals intrinsic value at expiry', ()=>{
+  expect(calculateBlackScholesWarrant(130,120,0.1,0)).toEqual({
     intrinsicValue:1,
-    timeValue:0.5,
-    warrantPrice:1.5,
+    timeValue:0,
+    warrantPrice:1,
+    d1:null,
+    d2:null,
   })
 })
 
-test('calculateWarrantValues keeps intrinsic value at zero when out of the money', ()=>{
-  expect(calculateWarrantValues(110,120,0.1,0.4)).toEqual({
-    intrinsicValue:0,
-    timeValue:0.4,
-    warrantPrice:0.4,
-  })
+test('calculateBlackScholesWarrant waits for complete valid input', ()=>{
+  expect(calculateBlackScholesWarrant('',120,0.1,90)).toBeNull()
+  expect(calculateBlackScholesWarrant(130,120,-0.1,90)).toBeNull()
 })
 
-test('calculateWarrantValues waits for complete valid input', ()=>{
-  expect(calculateWarrantValues('',120,0.1,1.5)).toBeNull()
-  expect(calculateWarrantValues(130,120,-0.1,1.5)).toBeNull()
+test('calculateBlackScholesWarrant supports put warrants', ()=>{
+  const result=calculateBlackScholesWarrant(80,100,0.05,30,{volatility:0.25,riskFreeRate:0.015,daysPerYear:252,callPut:'P'})
+  expect(result.intrinsicValue).toBe(1)
+  expect(result.warrantPrice).toBeGreaterThanOrEqual(1)
+})
+
+test('businessDaysBetween excludes weekends', ()=>{
+  expect(businessDaysBetween('2026-08-21','2026-08-24')).toBe(1)
+  expect(businessDaysBetween('2026-08-21','2026-08-24',['2026-08-24'])).toBe(0)
+})
+
+test('StockScorePage requires a complete trade plan', ()=>{
+  render(<Provider store={store}><StockScorePage /></Provider>)
+  expect(screen.getByRole('heading',{name:'股票標的評分'})).toBeInTheDocument()
+  expect(screen.getByRole('button',{name:'開始評分'})).toBeDisabled()
+  expect(screen.getByLabelText('股票代號')).toHaveValue('2330')
 })

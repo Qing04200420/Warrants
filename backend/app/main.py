@@ -6,9 +6,12 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import clear, history, init_db, record_iv_sample, save
-from .models import Analysis, AnalyzeRequest
+from .estimation import estimate_warrant
+from .models import Analysis, AnalyzeRequest, EstimateRequest, StockScoreRequest, StockScoreResponse, WarrantEstimate
 from .providers import fetch_stock_quote, fetch_warrant
 from .scoring import calculate_score
+from .stock_history import fetch_stock_history
+from .stock_scoring import calculate_stock_score
 from .twse_warrants import fetch_twse_warrant_market_data
 
 
@@ -43,7 +46,33 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "broker_market_data": "shioaji" if os.getenv("SHIOAJI_API_URL") else "public_fallback",
+    }
+
+
+@app.post("/api/warrants/estimate", response_model=WarrantEstimate)
+async def estimate(request: EstimateRequest):
+    """依權證代號自動載入最新條款與行情，並回傳理論價格。"""
+    try:
+        return await estimate_warrant(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except http_error_types() as exc:
+        raise HTTPException(status_code=502, detail="官方或券商行情服務暫時無法連線") from exc
+
+
+@app.post("/api/stocks/score", response_model=StockScoreResponse)
+async def score_stock(request: StockScoreRequest):
+    """依大盤、日週線、價量、動能及交易計畫計算股票多頭分數。"""
+    try:
+        history_data = await fetch_stock_history(request.code)
+        return calculate_stock_score(history_data, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except http_error_types() as exc:
+        raise HTTPException(status_code=502, detail="股票歷史行情服務暫時無法連線") from exc
 
 
 @app.post("/api/warrants/analyze", response_model=Analysis)
@@ -115,7 +144,7 @@ def http_error_types():
 
 
 @app.get("/api/history", response_model=list[Analysis])
-def get_history(code: str | None = Query(default=None, pattern=r"^\d{6}$"), limit: int = Query(default=30, ge=1, le=200)):
+def get_history(code: str | None = Query(default=None, pattern=r"^[0-9A-Z]{6}$"), limit: int = Query(default=30, ge=1, le=200)):
     return history(code, limit)
 
 

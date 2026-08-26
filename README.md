@@ -23,19 +23,27 @@ npm run dev
 
 開啟 `http://localhost:5173`。Swagger 文件在 `http://localhost:8000/docs`。
 
+前端共有「權證評分」、「標的評分」及「價格試算」三個頁面。標的評分頁會要求輸入進場價、停損價與目標價，再分析大盤、日週線、價格結構、量價及動能。
+
 ## 資料來源與限制
 
-- 權證條件：元富「新鉅亨」公開個股基本資料頁。
-- 標的即時行情：`twstock` 優先；盤後或失敗時改用 `yfinance`（上市 `.TW`、上櫃 `.TWO`）最近日線。
-- 公開網站格式可能異動；正式營運建議改接有 SLA／授權的行情 API，並依來源條款設定快取與頻率限制。
+- 權證估價條款：臺灣證券交易所 OpenAPI 的最新履約價、行使比例與最後交易日。
+- 波動率：TWSE 權證資訊揭露平台委買隱含波動率；官方無資料時才使用清楚標示的 30% 預設值。
+- 正式券商行情：可選接永豐金證券 Shioaji HTTP API；未設定時以 `twstock` 與 `yfinance` 作公開行情備援。
+- 股票技術分析：Shioaji 啟用時分段取得 Kbars 並彙整日線；未啟用時使用 Yahoo Finance 日線備援。結果快取 15 分鐘，避免重複查詢歷史行情。
+- 舊評分頁的權證補充欄位仍使用元富「新鉅亨」公開資料頁。
 - 分數是產品篩選指標，不是投資建議。公式位於 `backend/app/scoring.py`，權重可集中調整。
 
 ## API
 
 - `POST /api/warrants/analyze`：查詢並保存快照，body: `{ "code": "067185" }`
+- `POST /api/warrants/estimate`：自動載入最新條款、行情及隱波並估價；body 最少只需 `{ "code": "067185" }`，亦可傳入 `stock_price`、`implied_vol`、`valuation_date`、`risk_free_rate` 覆寫情境。
+- `POST /api/stocks/score`：股票多頭技術面評分，body: `{ "code": "2330", "entry_price": 2400, "stop_loss_price": 2300, "target_price": 2600 }`。
 - `GET /api/history?code=067185&limit=30`：歷史紀錄
 - `DELETE /api/history`：清除歷史紀錄
 - `GET /api/health`：健康檢查
+
+股票分數滿分 100：大盤環境 10、日線趨勢 25、週線趨勢 10、價格結構 10、量價 10、RSI／MACD／KD 動能 15、風險報酬 20。規則集中於 `backend/app/stock_scoring.py`，回應會附上每項實際數值、成立狀態與得分。
 
 ## 測試
 
@@ -43,4 +51,15 @@ npm run dev
 cd backend
 python -m pytest
 ```
+
+## 正式券商行情（Shioaji）
+
+先依[永豐金證券 Shioaji 官方說明](https://sinotrade.github.io/tutor/simulation/)啟動已登入的 HTTP server，再設定後端環境變數：
+
+```powershell
+$env:SHIOAJI_API_URL = "http://127.0.0.1:8080"
+uvicorn app.main:app --reload --port 8000
+```
+
+本專案只呼叫 Shioaji 的契約與市場資料端點，不會呼叫下單、改單或帳務端點。券商服務未設定或離線時，系統會標示並降級至公開行情備援。請勿將 `SJ_API_KEY` 或 `SJ_SEC_KEY` 提交到版本庫。
 
