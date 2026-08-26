@@ -48,7 +48,7 @@ function calculateBlackScholesWarrant(stockPrice, strikePrice, exerciseRatio, da
 function SiteNav({page, onNavigate}) {
   return <nav className="site-nav" aria-label="主要導覽">
     <a className="brand" href="#dashboard" onClick={event=>onNavigate(event,'dashboard')}>
-      <span className="brand-mark">W</span><span>權證實驗室</span>
+      <span className="brand-mark">W</span><span>投資評分工具</span>
     </a>
     <div className="nav-links">
       <a className={page==='dashboard'?'active':''} href="#dashboard" onClick={event=>onNavigate(event,'dashboard')}>權證評分</a>
