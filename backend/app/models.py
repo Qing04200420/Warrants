@@ -69,6 +69,19 @@ class EstimateRequest(AnalyzeRequest):
     risk_free_rate: float = Field(default=0.015, ge=-0.1, le=1)
 
 
+class StockQuote(BaseModel):
+    """標的股票行情；來源無資料時價格欄位允許為空。"""
+    code: str
+    name: str
+    price: float | None = None
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    volume: int | None = None
+    source: str
+    quoted_at: str | None = None
+
+
 class WarrantContract(BaseModel):
     code: str
     name: str
@@ -108,19 +121,6 @@ class WarrantEstimate(BaseModel):
     delta: float
     data_sources: list[str]
     warning: str | None = None
-
-
-class StockQuote(BaseModel):
-    """標的股票行情；來源無資料時價格欄位允許為空。"""
-    code: str
-    name: str
-    price: float | None = None
-    open: float | None = None
-    high: float | None = None
-    low: float | None = None
-    volume: int | None = None
-    source: str
-    quoted_at: str | None = None
 
 
 class WarrantMetrics(BaseModel):
