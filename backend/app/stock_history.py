@@ -41,6 +41,184 @@ class StockHistoryProviderError(RuntimeError):
     """歷史行情供應商連線或格式錯誤。"""
 
 
+OFFICIAL_HISTORY_MONTHS = 9
+TWSE_STOCK_DAY_URL = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
+TWSE_INDEX_DAY_URL = "https://www.twse.com.tw/indicesReport/MI_5MINS_HIST"
+TPEX_STOCK_DAY_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
+
+
+def _month_starts(count: int = OFFICIAL_HISTORY_MONTHS) -> list[date]:
+    today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+    result: list[date] = []
+    year, month = today.year, today.month
+    for _ in range(count):
+        result.append(date(year, month, 1))
+        month -= 1
+        if month == 0:
+            year -= 1
+            month = 12
+    return result
+
+
+def _number(value: object) -> float:
+    text = str(value).replace(",", "").strip()
+    if not text or text in {"--", "---", "X"}:
+        raise ValueError(f"無法解析行情數值：{value}")
+    return float(text)
+
+
+def _roc_date(value: object) -> date:
+    year, month, day = (int(part) for part in str(value).strip().split("/"))
+    return date(year + 1911, month, day)
+
+
+def _parse_twse_stock(payload: dict) -> list[DailyBar]:
+    if payload.get("stat") != "OK":
+        return []
+    result: list[DailyBar] = []
+    for row in payload.get("data", []):
+        try:
+            result.append(
+                DailyBar(
+                    day=_roc_date(row[0]),
+                    volume=_number(row[1]),
+                    open=_number(row[3]),
+                    high=_number(row[4]),
+                    low=_number(row[5]),
+                    close=_number(row[6]),
+                )
+            )
+        except (IndexError, TypeError, ValueError):
+            continue
+    return result
+
+
+def _parse_tpex_stock(payload: dict) -> list[DailyBar]:
+    tables = payload.get("tables") or []
+    rows = tables[0].get("data", []) if tables else []
+    result: list[DailyBar] = []
+    for row in rows:
+        try:
+            result.append(
+                DailyBar(
+                    day=_roc_date(row[0]),
+                    volume=_number(row[1]),
+                    open=_number(row[3]),
+                    high=_number(row[4]),
+                    low=_number(row[5]),
+                    close=_number(row[6]),
+                )
+            )
+        except (IndexError, TypeError, ValueError):
+            continue
+    return result
+
+
+def _parse_twse_index(payload: dict) -> list[DailyBar]:
+    if payload.get("stat") != "OK":
+        return []
+    result: list[DailyBar] = []
+    for row in payload.get("data", []):
+        try:
+            result.append(
+                DailyBar(
+                    day=_roc_date(row[0]),
+                    open=_number(row[1]),
+                    high=_number(row[2]),
+                    low=_number(row[3]),
+                    close=_number(row[4]),
+                    volume=0,
+                )
+            )
+        except (IndexError, TypeError, ValueError):
+            continue
+    return result
+
+
+async def _official_payload(
+    client: httpx.AsyncClient,
+    url: str,
+    params: dict[str, str],
+) -> dict:
+    response = await client.get(url, params=params)
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("交易所回應格式錯誤")
+    return payload
+
+
+async def _from_official_exchanges(code: str) -> StockHistory:
+    import twstock
+
+    item = twstock.codes.get(code)
+    is_tpex = bool(item and item.data_source == "tpex")
+    months = _month_starts()
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Warrants-Scoring/1.0 (+https://github.com/Qing04200420/Warrants)",
+    }
+    limits = httpx.Limits(max_connections=4, max_keepalive_connections=4)
+    async with httpx.AsyncClient(headers=headers, timeout=15, follow_redirects=True, limits=limits) as client:
+        if is_tpex:
+            stock_requests = [
+                _official_payload(
+                    client,
+                    TPEX_STOCK_DAY_URL,
+                    {"code": code, "date": month.strftime("%Y/%m/%d"), "response": "json"},
+                )
+                for month in months
+            ]
+            stock_parser = _parse_tpex_stock
+            market_name = "櫃買中心"
+        else:
+            stock_requests = [
+                _official_payload(
+                    client,
+                    TWSE_STOCK_DAY_URL,
+                    {"stockNo": code, "date": month.strftime("%Y%m%d"), "response": "json"},
+                )
+                for month in months
+            ]
+            stock_parser = _parse_twse_stock
+            market_name = "臺灣證券交易所"
+
+        index_requests = [
+            _official_payload(
+                client,
+                TWSE_INDEX_DAY_URL,
+                {"date": month.strftime("%Y%m%d"), "response": "json"},
+            )
+            for month in months
+        ]
+        stock_payloads, index_payloads = await asyncio.gather(
+            asyncio.gather(*stock_requests, return_exceptions=True),
+            asyncio.gather(*index_requests, return_exceptions=True),
+        )
+
+    stock_bars: list[DailyBar] = []
+    for payload in stock_payloads:
+        if isinstance(payload, dict):
+            stock_bars.extend(stock_parser(payload))
+    index_bars: list[DailyBar] = []
+    for payload in index_payloads:
+        if isinstance(payload, dict):
+            index_bars.extend(_parse_twse_index(payload))
+
+    stock_bars = sorted({bar.day: bar for bar in stock_bars}.values(), key=lambda bar: bar.day)
+    index_bars = sorted({bar.day: bar for bar in index_bars}.values(), key=lambda bar: bar.day)
+    if not stock_bars or not index_bars:
+        raise StockHistoryProviderError("交易所官方歷史行情服務暫時無法連線")
+
+    return StockHistory(
+        code=code,
+        name=item.name if item else code,
+        bars=stock_bars,
+        index_bars=index_bars,
+        source=f"{market_name}個股日成交資訊 / 臺灣證券交易所加權指數歷史資料",
+    )
+
+
 def _daily_from_kbars(payloads: list[dict]) -> list[DailyBar]:
     grouped: dict[date, dict[str, float]] = {}
     for payload in payloads:
@@ -190,12 +368,13 @@ async def fetch_stock_history(code: str) -> StockHistory:
         try:
             result = await _from_shioaji(code, client)
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
-            fallback = await asyncio.to_thread(_from_yfinance_sync, code)
-            result = StockHistory(
-                **{**fallback.__dict__, "warning": "Shioaji 歷史行情暫時無法取得，已切換 Yahoo Finance 日線備援。"}
-            )
+            result = await _from_official_exchanges(code)
+            result = StockHistory(**{**result.__dict__, "warning": "Shioaji 暫時無法使用，已改用交易所官方資料。"})
     else:
-        result = await asyncio.to_thread(_from_yfinance_sync, code)
+        try:
+            result = await _from_official_exchanges(code)
+        except (httpx.HTTPError, KeyError, TypeError, ValueError, StockHistoryProviderError):
+            result = await asyncio.to_thread(_from_yfinance_sync, code)
 
     if len(result.bars) < 80 or len(result.index_bars) < 60:
         raise ValueError("歷史行情筆數不足，至少需要個股 80 日與加權指數 60 日資料")

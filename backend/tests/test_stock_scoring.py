@@ -4,7 +4,15 @@ import pytest
 from pydantic import ValidationError
 
 from app.models import StockScoreRequest
-from app.stock_history import DailyBar, StockHistory, _daily_from_kbars, _from_yfinance_sync
+from app.stock_history import (
+    DailyBar,
+    StockHistory,
+    _daily_from_kbars,
+    _from_yfinance_sync,
+    _parse_tpex_stock,
+    _parse_twse_index,
+    _parse_twse_stock,
+)
 from app.stock_scoring import calculate_stock_score
 
 
@@ -108,3 +116,35 @@ def test_otc_stock_uses_two_suffix_without_querying_tw_first(monkeypatch):
 
     assert requested == ["4931.TWO", "^TWII"]
     assert result.source == "Yahoo Finance 日線備援（4931.TWO / ^TWII）"
+
+
+def test_official_exchange_payloads_are_parsed_to_daily_bars():
+    tpex = _parse_tpex_stock(
+        {
+            "tables": [
+                {
+                    "data": [
+                        ["115/08/25", "9,268", "2,285,000", "252.00", "259.00", "238.50", "245.00"]
+                    ]
+                }
+            ]
+        }
+    )
+    twse = _parse_twse_stock(
+        {
+            "stat": "OK",
+            "data": [
+                ["115/08/25", "35,209,944", "83,673,350,698", "2,390.00", "2,395.00", "2,365.00", "2,370.00"]
+            ],
+        }
+    )
+    index = _parse_twse_index(
+        {
+            "stat": "OK",
+            "data": [["115/08/25", "44,728.36", "45,169.46", "44,210.31", "45,169.46"]],
+        }
+    )
+
+    assert tpex == [DailyBar(date(2026, 8, 25), 252, 259, 238.5, 245, 9268)]
+    assert twse == [DailyBar(date(2026, 8, 25), 2390, 2395, 2365, 2370, 35209944)]
+    assert index == [DailyBar(date(2026, 8, 25), 44728.36, 45169.46, 44210.31, 45169.46, 0)]
