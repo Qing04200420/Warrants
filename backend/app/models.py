@@ -87,8 +87,8 @@ class WarrantRecommendationResponse(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
-    """分析端點輸入：接受數字或含英文字尾的六碼權證代號。"""
-    code: str = Field(pattern=r"^[0-9A-Z]{6}$", examples=["067185", "03002T"])
+    """分析端點輸入：僅接受六位數字權證代號。"""
+    code: str = Field(pattern=r"^[0-9]{6}$", examples=["067185"])
 
     @field_validator("code", mode="before")
     @classmethod

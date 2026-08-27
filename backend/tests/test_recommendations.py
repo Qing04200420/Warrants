@@ -41,6 +41,7 @@ def test_recommendations_exclude_contracts_with_less_than_30_days():
         [
             warrant("000001", last_trading=date(2026, 9, 10)),
             warrant("000002", strike=150),
+            warrant("00003T"),
         ],
         underlying_name="台積電",
         stock_price=100,

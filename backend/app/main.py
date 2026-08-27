@@ -180,7 +180,7 @@ def http_error_types():
 
 
 @app.get("/api/history", response_model=list[Analysis])
-def get_history(code: str | None = Query(default=None, pattern=r"^[0-9A-Z]{6}$"), limit: int = Query(default=30, ge=1, le=200)):
+def get_history(code: str | None = Query(default=None, pattern=r"^[0-9]{6}$"), limit: int = Query(default=30, ge=1, le=200)):
     return history(code, limit)
 
 

@@ -46,7 +46,12 @@ def recommend_warrants(
     candidates: list[tuple[OfficialWarrant, int, float]] = []
     for item in warrants:
         days = (item.last_trading_date - today).days
-        if item.call_put != "C" or days < 30 or _normalized_name(item.underlying_name) != target_name:
+        if (
+            re.fullmatch(r"[0-9]{6}", item.code) is None
+            or item.call_put != "C"
+            or days < 30
+            or _normalized_name(item.underlying_name) != target_name
+        ):
             continue
         gap_percent = (item.strike_price - stock_price) / stock_price * 100
         if abs(gap_percent) > 20:

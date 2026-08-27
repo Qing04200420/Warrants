@@ -3,8 +3,10 @@ import { render, screen, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { test, expect } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { App, Metric, StockScorePage, businessDaysBetween, calculateBlackScholesWarrant, getPageFromHash, money } from '../main'
+import {App,Metric,StockScorePage,getPageFromHash,money} from '../main'
+import {businessDaysBetween,calculateBlackScholesWarrant} from '../calculator'
 import { store } from '../store'
+import {LoadingSkeleton,sanitizeWarrantCode} from '../ui'
 
 test('money formats numbers and empty', ()=>{
   expect(money(null)).toBe('—')
@@ -48,6 +50,16 @@ test('calculateBlackScholesWarrant supports put warrants', ()=>{
 test('businessDaysBetween excludes weekends', ()=>{
   expect(businessDaysBetween('2026-08-21','2026-08-24')).toBe(1)
   expect(businessDaysBetween('2026-08-21','2026-08-24',['2026-08-24'])).toBe(0)
+})
+
+test('warrant code input keeps at most six digits', ()=>{
+  expect(sanitizeWarrantCode('03A02T91')).toBe('030291')
+  expect(sanitizeWarrantCode('123456789')).toBe('123456')
+})
+
+test('loading skeleton exposes its status to assistive technology', ()=>{
+  render(<LoadingSkeleton label="正在載入權證評分"/>)
+  expect(screen.getByRole('status',{name:'正在載入權證評分'})).toBeInTheDocument()
 })
 
 test('StockScorePage requires a complete trade plan', ()=>{

@@ -16,11 +16,13 @@ export const scoreStock = createAsyncThunk('stock/score', async payload => json(
 export const recommendWarrants = createAsyncThunk('warrant/recommend', async payload => json(await fetch(apiUrl('/api/warrants/recommend'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})))
 export const loadHistory = createAsyncThunk('warrant/history', async () => json(await fetch(apiUrl('/api/history?limit=30'))))
 export const clearHistory = createAsyncThunk('warrant/clear', async () => json(await fetch(apiUrl('/api/history'),{method:'DELETE'})))
-const slice = createSlice({name:'warrant',initialState:{current:null,history:[],status:'idle',error:null,estimate:null,estimateStatus:'idle',estimateError:null,stockScore:null,stockScoreStatus:'idle',stockScoreError:null,warrantRecommendations:null,recommendationStatus:'idle',recommendationError:null},reducers:{},extraReducers:b=>b
+const slice = createSlice({name:'warrant',initialState:{current:null,history:[],historyStatus:'idle',status:'idle',error:null,estimate:null,estimateStatus:'idle',estimateError:null,stockScore:null,stockScoreStatus:'idle',stockScoreError:null,warrantRecommendations:null,recommendationStatus:'idle',recommendationError:null},reducers:{},extraReducers:b=>b
   .addCase(analyze.pending,s=>{s.status='loading';s.error=null})
   .addCase(analyze.fulfilled,(s,a)=>{s.status='done';s.current=a.payload;s.history=[a.payload,...s.history.filter(x=>x.id!==a.payload.id)]})
   .addCase(analyze.rejected,(s,a)=>{s.status='error';s.error=a.error.message})
-  .addCase(loadHistory.fulfilled,(s,a)=>{s.history=a.payload})
+  .addCase(loadHistory.pending,s=>{s.historyStatus='loading'})
+  .addCase(loadHistory.fulfilled,(s,a)=>{s.historyStatus='done';s.history=a.payload})
+  .addCase(loadHistory.rejected,s=>{s.historyStatus='error'})
   .addCase(clearHistory.fulfilled,s=>{s.history=[]})
   .addCase(estimate.pending,s=>{s.estimateStatus='loading';s.estimateError=null})
   .addCase(estimate.fulfilled,(s,a)=>{s.estimateStatus='done';s.estimate=a.payload})
