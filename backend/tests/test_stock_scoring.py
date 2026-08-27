@@ -1,4 +1,6 @@
-from datetime import date, timedelta
+import asyncio
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from pydantic import ValidationError
@@ -7,11 +9,16 @@ from app.models import StockScoreRequest
 from app.stock_history import (
     DailyBar,
     StockHistory,
+    _IndexHistoryPart,
+    _StockHistoryPart,
+    _cache_expires_at,
+    _clear_history_caches,
     _daily_from_kbars,
     _from_yfinance_sync,
     _parse_tpex_stock,
     _parse_twse_index,
     _parse_twse_stock,
+    fetch_stock_history,
 )
 from app.stock_scoring import calculate_stock_score
 
@@ -148,3 +155,57 @@ def test_official_exchange_payloads_are_parsed_to_daily_bars():
     assert tpex == [DailyBar(date(2026, 8, 25), 252, 259, 238.5, 245, 9268)]
     assert twse == [DailyBar(date(2026, 8, 25), 2390, 2395, 2365, 2370, 35209944)]
     assert index == [DailyBar(date(2026, 8, 25), 44728.36, 45169.46, 44210.31, 45169.46, 0)]
+
+
+def test_history_cache_expiry_follows_taiwan_market_hours():
+    taipei = ZoneInfo("Asia/Taipei")
+
+    assert _cache_expires_at(datetime(2026, 8, 24, 10, 0, tzinfo=taipei)) == datetime(
+        2026, 8, 24, 10, 10, tzinfo=taipei
+    )
+    assert _cache_expires_at(datetime(2026, 8, 24, 13, 25, tzinfo=taipei)) == datetime(
+        2026, 8, 24, 13, 30, tzinfo=taipei
+    )
+    assert _cache_expires_at(datetime(2026, 8, 28, 14, 0, tzinfo=taipei)) == datetime(
+        2026, 8, 31, 9, 0, tzinfo=taipei
+    )
+    assert _cache_expires_at(
+        datetime(2026, 8, 28, 14, 0, tzinfo=taipei),
+        frozenset({date(2026, 8, 31)}),
+    ) == datetime(2026, 9, 1, 9, 0, tzinfo=taipei)
+
+
+def test_stock_and_index_caches_are_independent_and_coalesce_concurrent_misses(monkeypatch):
+    calls = {"stock": 0, "index": 0}
+    bars = make_bars()
+
+    async def fake_stock_loader(code, _client):
+        calls["stock"] += 1
+        await asyncio.sleep(0)
+        return _StockHistoryPart(code=code, name=code, bars=bars, source=f"stock-{code}")
+
+    async def fake_index_loader(_client):
+        calls["index"] += 1
+        await asyncio.sleep(0)
+        return _IndexHistoryPart(bars=bars, source="index")
+
+    async def fake_holidays():
+        return frozenset()
+
+    monkeypatch.setattr("app.stock_history._load_stock_history_part", fake_stock_loader)
+    monkeypatch.setattr("app.stock_history._load_index_history_part", fake_index_loader)
+    monkeypatch.setattr("app.stock_history._load_market_holidays", fake_holidays)
+    _clear_history_caches()
+
+    async def run_requests():
+        return await asyncio.gather(
+            *(fetch_stock_history(code) for code in ["2330", "2317", "2330", "2317", "2330"])
+        )
+
+    try:
+        results = asyncio.run(run_requests())
+    finally:
+        _clear_history_caches()
+
+    assert [result.code for result in results] == ["2330", "2317", "2330", "2317", "2330"]
+    assert calls == {"stock": 2, "index": 1}
