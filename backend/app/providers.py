@@ -1,11 +1,13 @@
 import re
 from datetime import datetime
+from time import monotonic
 from bs4 import BeautifulSoup
 import httpx
 
 from .models import StockQuote, WarrantMetrics
 
 BASE_URL = "https://newjust.masterlink.com.tw/Z/ZC/ZCA/zcastkwar8840_AQ{code}.djhtm"
+_warrant_cache: dict[str, tuple[float, tuple[str, StockQuote, WarrantMetrics]]] = {}
 
 
 def _number(pattern: str, text: str, *, default: float | None = None) -> float:
@@ -115,12 +117,17 @@ def parse_warrant_page(html: str, code: str) -> tuple[str, StockQuote, WarrantMe
 
 async def fetch_warrant(code: str) -> tuple[str, StockQuote, WarrantMetrics]:
     """下載 Big5 權證頁面並轉交純解析函式處理。"""
+    cached = _warrant_cache.get(code)
+    if cached and monotonic() - cached[0] < 60:
+        return cached[1]
     # 此固定公開來源的舊憑證鏈缺少 Python 3.14 要求的 SKI；僅此 client 關閉驗證。
     async with httpx.AsyncClient(timeout=12, verify=False, headers={"User-Agent": "Mozilla/5.0 WarrantScore/1.0"}) as client:
         response = await client.get(BASE_URL.format(code=code))
         response.raise_for_status()
         response.encoding = "big5"
-    return parse_warrant_page(response.text, code)
+    result = parse_warrant_page(response.text, code)
+    _warrant_cache[code] = (monotonic(), result)
+    return result
 
 
 def fetch_stock_quote(stock: StockQuote) -> tuple[StockQuote, str | None]:

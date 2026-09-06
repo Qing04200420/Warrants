@@ -1,0 +1,16 @@
+/* High-contrast trading cockpit theme layered over all existing product pages. */
+:root{--neo:#3cf2b0;--ink:#07130f;--surface:#0e201a;--edge:#24453a;color:#eaf6f1;background:#07130f}
+body{background:radial-gradient(circle at 85% 0,#174d3d 0,transparent 34%),radial-gradient(circle at 0 55%,#12362d 0,transparent 28%),#07130f;color:#eaf6f1}
+.site-nav{position:sticky;top:0;z-index:20;margin:0 -24px 35px;padding:14px 24px;background:#07130fdd;border-bottom:1px solid #29483e;backdrop-filter:blur(14px)}
+.brand,.nav-links a{color:#b7ccc4}.brand-mark,.nav-links a.active{background:var(--neo);color:#07130f}.nav-links{background:#10251e}.nav-links a.active{box-shadow:0 0 28px #3cf2b02b}
+h1{letter-spacing:-.055em}h1,.hero-card h2,.stock-score-hero h2,.calculator-header h1{color:#f1fbf7}.eyebrow{color:var(--neo)}
+.market-dot{color:var(--neo);background:#10251e;border:1px solid #285244;box-shadow:0 0 30px #3cf2b018}
+.score-form,.warrant-lookup,.result-card,.risk-reward-card{background:linear-gradient(135deg,#10271f,#091712);border:1px solid #2a5144;box-shadow:0 22px 70px #0006}
+.search input{background:#07130f;color:#fff;border:1px solid #315548}.search input:focus{border-color:var(--neo);box-shadow:0 0 0 3px #3cf2b01c}.search button,.recommendation-heading>button{background:var(--neo);color:#07130f}
+article,.breakdown,.history,.empty,.hero-card,.stock-score-hero,.warrant-recommendation,.contract-card,.calculator-form,.example-card{background:#0e201a;color:#eaf6f1;border:1px solid var(--edge);box-shadow:0 15px 45px #0004}
+.hero-card{border-left:6px solid var(--neo)}.score strong,.table-score,.condition.pass,.recommendation-card-title span{color:var(--neo)}
+.metrics,.contract-metrics{background:#27483d}.metric{background:#0e201a}.metric span,.muted,footer,.card-heading small,.section-intro>p:last-child{color:#83a097}
+.bar{background:#1d382f}.bar i{background:linear-gradient(90deg,#15966b,var(--neo));box-shadow:0 0 12px #3cf2b055}
+.number-field>div{background:#0a1813;border-color:#315045}.number-field input{color:#fff}.number-field>div:focus-within{border-color:var(--neo);background:#0a1813}
+th,td{border-color:#244239}tbody tr:hover{background:#153027}.ghost{background:#153027;color:#b7ccc4}.warning{border:1px solid #6e5726;background:#3c3015}.formula-chip,.pricing-note,.recommendation-notice{background:#10251e;border-color:#29483e;color:#9bb3aa}
+@media(max-width:720px){.site-nav{margin:0 -14px 28px;padding:12px 14px}}

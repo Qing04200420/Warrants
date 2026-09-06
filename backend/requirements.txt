@@ -6,3 +6,4 @@ twstock>=1.5,<2
 yfinance>=0.2.65,<1
 pydantic>=2.12,<3
 pytest>=8.4,<10
+pytest-asyncio>=0.25,<2

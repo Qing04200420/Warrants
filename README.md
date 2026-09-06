@@ -64,3 +64,7 @@ uvicorn app.main:app --reload --port 8000
 
 本專案只呼叫 Shioaji 的契約與市場資料端點，不會呼叫下單、改單或帳務端點。券商服務未設定或離線時，系統會標示並降級至公開行情備援。請勿將 `SJ_API_KEY` 或 `SJ_SEC_KEY` 提交到版本庫。
 
+## 元大證券 SPARK 即時行情
+
+SPARK 使用需申請的官方原生元件。建議在已安裝 SDK 的主機常駐唯讀行情 Gateway，並設定 `YUANTA_GATEWAY_URL`、`YUANTA_GATEWAY_TOKEN` 與選用的 `YUANTA_GATEWAY_TIMEOUT`。Gateway 提供 `GET /v1/quotes/{股票代號}`，回傳 `name`、`price`、`open`、`high`、`low`、`volume`、`quoted_at`。未設定或逾時時會自動降級至既有公開行情來源。
+

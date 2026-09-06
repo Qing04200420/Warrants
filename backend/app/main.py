@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import asyncio
 import os
 
+import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -24,6 +26,7 @@ from .stock_history import StockHistoryProviderError, fetch_stock_history
 from .stock_scoring import calculate_stock_score
 from .twse_warrants import fetch_twse_warrant_market_data
 from .twse_openapi import fetch_official_warrants
+from .yuanta import YuantaNotConfigured, fetch_yuanta_quote
 
 
 @asynccontextmanager
@@ -60,6 +63,7 @@ def health():
     return {
         "status": "ok",
         "broker_market_data": "shioaji" if os.getenv("SHIOAJI_API_URL") else "public_fallback",
+        "yuanta_market_data": "configured" if os.getenv("YUANTA_GATEWAY_URL") else "fallback",
     }
 
 
@@ -117,10 +121,18 @@ async def analyze(request: AnalyzeRequest):
     try:
         # 先取得權證基本條件，再用標的代號查詢股票行情。
         name, stock_stub, metrics = await fetch_warrant(request.code)
-        stock, warning = fetch_stock_quote(stock_stub)
+        async def load_quote():
+            try:
+                return await fetch_yuanta_quote(stock_stub.code, stock_stub.name), None
+            except (YuantaNotConfigured, httpx.HTTPError, ValueError, TypeError):
+                return await asyncio.to_thread(fetch_stock_quote, stock_stub)
+
+        quote_future = asyncio.create_task(load_quote())
+        market_future = asyncio.create_task(fetch_twse_warrant_market_data(stock_stub.code, request.code, name))
+        stock, warning = await quote_future
         try:
             # TWSE 是補充資料來源；連線失敗不應讓整個分析 API 失敗。
-            market = await fetch_twse_warrant_market_data(stock_stub.code, request.code, name)
+            market = await market_future
             if market is None:
                 twse_warning = "TWSE 盤後資料找不到此權證，可能已下市或當日沒有造市報價。"
             else:
@@ -157,6 +169,8 @@ async def analyze(request: AnalyzeRequest):
                 )
                 twse_warning = None
         except Exception:
+            if not market_future.done():
+                market_future.cancel()
             twse_warning = "TWSE 盤後權證資料暫時無法連線，評分保留可取得的資料。"
         warning = " ".join(item for item in (warning, twse_warning) if item) or None
         # 所有可取得欄位合併完成後才計分，避免使用尚未補值的資料。

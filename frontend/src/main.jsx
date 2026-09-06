@@ -5,6 +5,7 @@ import {analyze, clearHistory, loadHistory, recommendWarrants, scoreStock, store
 import {LoadingSkeleton, Metric, money, percent, sanitizeWarrantCode} from './ui'
 import './styles.css'
 import './not-found.css'
+import './trading-theme.css'
 
 const toNumber = value => value == null || value === '' ? null : Number(value)
 const CalculatorPage=lazy(()=>import('./calculator'))
